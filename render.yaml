@@ -1,0 +1,122 @@
+services:
+  - type: web
+    name: healthlang-ai-mvp
+    env: python
+    plan: starter  # Can be upgraded to professional for better performance
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: false
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        value: 8000
+      - key: WORKERS
+        value: 1
+      - key: RELOAD
+        value: false
+      - key: LOG_LEVEL
+        value: INFO
+      - key: RAG_ENABLED
+        value: true
+      - key: MAX_RETRIEVAL_DOCS
+        value: 3
+      - key: SIMILARITY_THRESHOLD
+        value: 0.75
+      - key: MAX_TOKENS
+        value: 2048
+      - key: TEMPERATURE
+        value: 0.1
+      - key: TOP_P
+        value: 0.9
+      - key: CACHE_TTL
+        value: 7200
+      - key: CACHE_MAX_SIZE
+        value: 2000
+      - key: RATE_LIMIT_PER_MINUTE
+        value: 120
+      - key: RATE_LIMIT_PER_HOUR
+        value: 2000
+      - key: PROMETHEUS_ENABLED
+        value: true
+      - key: VECTOR_DB_TYPE
+        value: chroma
+      - key: EMBEDDING_MODEL
+        value: sentence-transformers/all-MiniLM-L6-v2
+      - key: CHUNK_SIZE
+        value: 1000
+      - key: CHUNK_OVERLAP
+        value: 200
+      - key: SUPPORTED_LANGUAGES
+        value: en,yo
+      - key: DEFAULT_SOURCE_LANGUAGE
+        value: en
+      - key: DEFAULT_TARGET_LANGUAGE
+        value: yo
+      - key: LLM_PROVIDER
+        value: groq
+      - key: MEDICAL_MODEL_PROVIDER
+        value: groq
+      - key: GROQ_MODEL
+        value: llama-3-8b-8192
+      - key: MEDICAL_MODEL_NAME
+        value: llama-3-8b-8192
+      - key: LLM_TIMEOUT
+        value: 30
+      - key: DATABASE_URL
+        value: sqlite:///./healthlang.db
+      - key: CHROMA_DB_PATH
+        value: ./data/medical_knowledge/embeddings
+      - key: CHROMA_PERSIST_DIRECTORY
+        value: ./data/chroma
+      - key: KNOWLEDGE_BASE_PATH
+        value: ./data/medical_knowledge/processed
+      - key: MEDICAL_SOURCES_PATH
+        value: ./data/medical_knowledge/raw
+      - key: WHO_GUIDELINES_URL
+        value: https://www.who.int/health-topics
+      - key: CDC_GUIDELINES_URL
+        value: https://www.cdc.gov/healthcommunication
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: 30
+      - key: CORS_ORIGINS
+        value: ["*"]  # Allow all origins for MVP
+      - key: LOG_FORMAT
+        value: json
+      - key: LOG_FILE
+        value: ./logs/healthlang.log
+      - key: MAX_FILE_SIZE
+        value: 10485760
+      - key: ALLOWED_FILE_TYPES
+        value: pdf,docx,txt,md
+      - key: TESTING
+        value: false
+      - key: MOCK_GROQ_RESPONSES
+        value: false
+      - key: USE_GPU
+        value: false
+      - key: USE_MPS
+        value: false
+      # Required API Keys (set these in Render dashboard)
+      - key: GROQ_API_KEY
+        sync: false  # Set this in Render dashboard
+      - key: OPENAI_API_KEY
+        sync: false  # Optional - set in Render dashboard
+      - key: ANTHROPIC_API_KEY
+        sync: false  # Optional - set in Render dashboard
+    healthCheckPath: /health
+    autoDeploy: true
+    numInstances: 1  # Can be increased for scaling
+    disk:
+      name: healthlang-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 10 

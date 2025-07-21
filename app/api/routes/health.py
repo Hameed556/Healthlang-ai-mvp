@@ -1,0 +1,359 @@
+"""
+Health check endpoints for HealthLang AI MVP
+"""
+
+import asyncio
+from datetime import datetime
+from typing import Dict, Any
+
+from fastapi import APIRouter, Depends, Request
+from prometheus_client import Counter, Histogram, Gauge
+
+from app.config import settings
+from app.utils.logger import get_logger
+from app.utils.metrics import get_metrics
+
+logger = get_logger(__name__)
+
+router = APIRouter()
+
+# Metrics
+health_check_counter = Counter(
+    "healthlang_health_checks_total",
+    "Total number of health checks",
+    ["endpoint", "status"]
+)
+
+health_check_duration = Histogram(
+    "healthlang_health_check_duration_seconds",
+    "Health check duration in seconds",
+    ["endpoint"]
+)
+
+service_status_gauge = Gauge(
+    "healthlang_service_status",
+    "Service status (1=healthy, 0=unhealthy)",
+    ["service"]
+)
+
+
+@router.get("/")
+async def health_check(request: Request) -> Dict[str, Any]:
+    """
+    Basic health check endpoint
+    
+    Returns:
+        Basic health status information
+    """
+    start_time = datetime.now()
+    
+    try:
+        # Basic health check
+        health_status = {
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "version": settings.APP_VERSION,
+            "environment": settings.ENVIRONMENT,
+            "request_id": getattr(request.state, "request_id", None),
+        }
+        
+        # Record metrics
+        health_check_counter.labels(endpoint="basic", status="success").inc()
+        service_status_gauge.labels(service="api").set(1)
+        
+        return health_status
+        
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        health_check_counter.labels(endpoint="basic", status="error").inc()
+        service_status_gauge.labels(service="api").set(0)
+        
+        return {
+            "status": "unhealthy",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat(),
+            "version": settings.APP_VERSION,
+            "environment": settings.ENVIRONMENT,
+            "request_id": getattr(request.state, "request_id", None),
+        }
+    finally:
+        duration = (datetime.now() - start_time).total_seconds()
+        health_check_duration.labels(endpoint="basic").observe(duration)
+
+
+@router.get("/detailed")
+async def detailed_health_check(request: Request) -> Dict[str, Any]:
+    """
+    Detailed health check endpoint
+    
+    Returns:
+        Detailed health status including all services
+    """
+    start_time = datetime.now()
+    
+    try:
+        # Get global service instances from main app
+        from app.main import translation_service, llm_client, vector_store
+        
+        health_status = {
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "version": settings.APP_VERSION,
+            "environment": settings.ENVIRONMENT,
+            "request_id": getattr(request.state, "request_id", None),
+            "services": {},
+        }
+        
+        # Check translation service
+        if translation_service:
+            try:
+                translation_health = await translation_service.health_check()
+                health_status["services"]["translation"] = translation_health
+                service_status_gauge.labels(service="translation").set(
+                    1 if translation_health.get("status") == "healthy" else 0
+                )
+            except Exception as e:
+                logger.error(f"Translation service health check failed: {e}")
+                health_status["services"]["translation"] = {
+                    "status": "unhealthy",
+                    "error": str(e)
+                }
+                service_status_gauge.labels(service="translation").set(0)
+        else:
+            health_status["services"]["translation"] = {"status": "not_initialized"}
+            service_status_gauge.labels(service="translation").set(0)
+        
+        # Check LLM client
+        if llm_client:
+            try:
+                llm_health = await llm_client.health_check()
+                health_status["services"]["llm"] = llm_health
+                service_status_gauge.labels(service="llm").set(
+                    1 if llm_health.get("status") == "healthy" else 0
+                )
+            except Exception as e:
+                logger.error(f"LLM client health check failed: {e}")
+                health_status["services"]["llm"] = {
+                    "status": "unhealthy",
+                    "error": str(e)
+                }
+                service_status_gauge.labels(service="llm").set(0)
+        else:
+            health_status["services"]["llm"] = {"status": "not_initialized"}
+            service_status_gauge.labels(service="llm").set(0)
+        
+        # Check vector store
+        if vector_store:
+            try:
+                vector_health = await vector_store.health_check()
+                health_status["services"]["vector_store"] = vector_health
+                service_status_gauge.labels(service="vector_store").set(
+                    1 if vector_health.get("status") == "healthy" else 0
+                )
+            except Exception as e:
+                logger.error(f"Vector store health check failed: {e}")
+                health_status["services"]["vector_store"] = {
+                    "status": "unhealthy",
+                    "error": str(e)
+                }
+                service_status_gauge.labels(service="vector_store").set(0)
+        else:
+            health_status["services"]["vector_store"] = {"status": "not_initialized"}
+            service_status_gauge.labels(service="vector_store").set(0)
+        
+        # Check Redis cache
+        try:
+            from app.utils.cache import Cache
+            cache = Cache()
+            await cache.initialize()
+            cache_health = await cache.health_check()
+            health_status["services"]["cache"] = cache_health
+            service_status_gauge.labels(service="cache").set(
+                1 if cache_health.get("status") == "healthy" else 0
+            )
+            await cache.cleanup()
+        except Exception as e:
+            logger.error(f"Cache health check failed: {e}")
+            health_status["services"]["cache"] = {
+                "status": "unhealthy",
+                "error": str(e)
+            }
+            service_status_gauge.labels(service="cache").set(0)
+        
+        # Determine overall status
+        all_healthy = all(
+            service.get("status") == "healthy" 
+            for service in health_status["services"].values()
+        )
+        
+        if not all_healthy:
+            health_status["status"] = "degraded"
+        
+        # Record metrics
+        health_check_counter.labels(endpoint="detailed", status="success").inc()
+        
+        return health_status
+        
+    except Exception as e:
+        logger.error(f"Detailed health check failed: {e}")
+        health_check_counter.labels(endpoint="detailed", status="error").inc()
+        
+        return {
+            "status": "unhealthy",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat(),
+            "version": settings.APP_VERSION,
+            "environment": settings.ENVIRONMENT,
+            "request_id": getattr(request.state, "request_id", None),
+        }
+    finally:
+        duration = (datetime.now() - start_time).total_seconds()
+        health_check_duration.labels(endpoint="detailed").observe(duration)
+
+
+@router.get("/ready")
+async def readiness_check(request: Request) -> Dict[str, Any]:
+    """
+    Readiness check endpoint for Kubernetes
+    
+    Returns:
+        Readiness status for the application
+    """
+    start_time = datetime.now()
+    
+    try:
+        # Check if all critical services are ready
+        from app.main import translation_service, llm_client, vector_store
+        
+        ready_services = []
+        not_ready_services = []
+        
+        # Check translation service
+        if translation_service:
+            try:
+                health = await translation_service.health_check()
+                if health.get("status") == "healthy":
+                    ready_services.append("translation")
+                else:
+                    not_ready_services.append("translation")
+            except Exception:
+                not_ready_services.append("translation")
+        else:
+            not_ready_services.append("translation")
+        
+        # Check LLM client
+        if llm_client:
+            try:
+                health = await llm_client.health_check()
+                if health.get("status") == "healthy":
+                    ready_services.append("llm")
+                else:
+                    not_ready_services.append("llm")
+            except Exception:
+                not_ready_services.append("llm")
+        else:
+            not_ready_services.append("llm")
+        
+        # Check vector store
+        if vector_store:
+            try:
+                health = await vector_store.health_check()
+                if health.get("status") == "healthy":
+                    ready_services.append("vector_store")
+                else:
+                    not_ready_services.append("vector_store")
+            except Exception:
+                not_ready_services.append("vector_store")
+        else:
+            not_ready_services.append("vector_store")
+        
+        # Determine readiness
+        is_ready = len(not_ready_services) == 0
+        
+        readiness_status = {
+            "ready": is_ready,
+            "timestamp": datetime.now().isoformat(),
+            "ready_services": ready_services,
+            "not_ready_services": not_ready_services,
+            "request_id": getattr(request.state, "request_id", None),
+        }
+        
+        # Record metrics
+        status = "ready" if is_ready else "not_ready"
+        health_check_counter.labels(endpoint="readiness", status=status).inc()
+        
+        return readiness_status
+        
+    except Exception as e:
+        logger.error(f"Readiness check failed: {e}")
+        health_check_counter.labels(endpoint="readiness", status="error").inc()
+        
+        return {
+            "ready": False,
+            "error": str(e),
+            "timestamp": datetime.now().isoformat(),
+            "request_id": getattr(request.state, "request_id", None),
+        }
+    finally:
+        duration = (datetime.now() - start_time).total_seconds()
+        health_check_duration.labels(endpoint="readiness").observe(duration)
+
+
+@router.get("/live")
+async def liveness_check(request: Request) -> Dict[str, Any]:
+    """
+    Liveness check endpoint for Kubernetes
+    
+    Returns:
+        Liveness status for the application
+    """
+    start_time = datetime.now()
+    
+    try:
+        # Simple liveness check - just verify the application is running
+        liveness_status = {
+            "alive": True,
+            "timestamp": datetime.now().isoformat(),
+            "request_id": getattr(request.state, "request_id", None),
+        }
+        
+        # Record metrics
+        health_check_counter.labels(endpoint="liveness", status="alive").inc()
+        
+        return liveness_status
+        
+    except Exception as e:
+        logger.error(f"Liveness check failed: {e}")
+        health_check_counter.labels(endpoint="liveness", status="dead").inc()
+        
+        return {
+            "alive": False,
+            "error": str(e),
+            "timestamp": datetime.now().isoformat(),
+            "request_id": getattr(request.state, "request_id", None),
+        }
+    finally:
+        duration = (datetime.now() - start_time).total_seconds()
+        health_check_duration.labels(endpoint="liveness").observe(duration)
+
+
+@router.get("/metrics")
+async def metrics_endpoint() -> Dict[str, Any]:
+    """
+    Application metrics endpoint
+    
+    Returns:
+        Current application metrics
+    """
+    try:
+        metrics = get_metrics()
+        return {
+            "metrics": metrics,
+            "timestamp": datetime.now().isoformat(),
+        }
+    except Exception as e:
+        logger.error(f"Metrics collection failed: {e}")
+        return {
+            "error": str(e),
+            "timestamp": datetime.now().isoformat(),
+        } 
