@@ -475,4 +475,252 @@ class MetricsCollector:
     
     def get_buffer_size(self) -> int:
         """Get current buffer size"""
-        return len(self.metrics_buffer) 
+        return len(self.metrics_buffer)
+
+
+async def record_medical_analysis(
+    request_id: str,
+    analysis_type: str,
+    duration: float,
+    success: bool,
+    error_type: Optional[str] = None,
+) -> None:
+    """Record medical analysis metrics"""
+    try:
+        status = "success" if success else "error"
+        
+        # This would use actual Prometheus metrics if they were defined
+        # For now, just log the metrics
+        logger.info(f"Medical analysis metrics: {analysis_type}, {status}, {duration:.2f}s")
+        
+        if not success and error_type:
+            logger.error(f"Medical analysis error: {error_type}")
+        
+        logger.debug(f"Recorded medical analysis metrics for request {request_id}")
+        
+    except Exception as e:
+        logger.error(f"Failed to record medical analysis metrics: {e}")
+
+
+async def record_safety_check(
+    request_id: str,
+    check_type: str,
+    passed: bool,
+    duration: float,
+    details: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Record safety check metrics"""
+    try:
+        status = "passed" if passed else "failed"
+        
+        # This would use actual Prometheus metrics if they were defined
+        # For now, just log the metrics
+        logger.info(f"Safety check metrics: {check_type}, {status}, {duration:.2f}s")
+        
+        if not passed and details:
+            logger.warning(f"Safety check failed: {details}")
+        
+        logger.debug(f"Recorded safety check metrics for request {request_id}")
+        
+    except Exception as e:
+        logger.error(f"Failed to record safety check metrics: {e}")
+
+
+async def record_response_formatting(
+    request_id: str,
+    format_type: str,
+    duration: float,
+    success: bool,
+    error_type: Optional[str] = None,
+) -> None:
+    """Record response formatting metrics"""
+    try:
+        status = "success" if success else "error"
+        
+        # This would use actual Prometheus metrics if they were defined
+        # For now, just log the metrics
+        logger.info(f"Response formatting metrics: {format_type}, {status}, {duration:.2f}s")
+        
+        if not success and error_type:
+            logger.error(f"Response formatting error: {error_type}")
+        
+        logger.debug(f"Recorded response formatting metrics for request {request_id}")
+        
+    except Exception as e:
+        logger.error(f"Failed to record response formatting metrics: {e}")
+
+
+async def record_embedding_generation(
+    request_id: str,
+    model: str,
+    text_length: int,
+    duration: float,
+    success: bool,
+    error_type: Optional[str] = None,
+) -> None:
+    """Record embedding generation metrics"""
+    try:
+        status = "success" if success else "error"
+        
+        # This would use actual Prometheus metrics if they were defined
+        # For now, just log the metrics
+        logger.info(f"Embedding generation metrics: {model}, {status}, {duration:.2f}s")
+        
+        if not success and error_type:
+            logger.error(f"Embedding generation error: {error_type}")
+        
+        logger.debug(f"Recorded embedding generation metrics for request {request_id}")
+        
+    except Exception as e:
+        logger.error(f"Failed to record embedding generation metrics: {e}")
+
+
+async def record_embedding_batch(
+    request_id: str,
+    model: str,
+    batch_size: int,
+    duration: float,
+    success: bool,
+    error_type: Optional[str] = None,
+) -> None:
+    """Record embedding batch processing metrics"""
+    try:
+        status = "success" if success else "error"
+        
+        # This would use actual Prometheus metrics if they were defined
+        # For now, just log the metrics
+        logger.info(f"Embedding batch metrics: {model}, {batch_size} items, {status}, {duration:.2f}s")
+        
+        if not success and error_type:
+            logger.error(f"Embedding batch error: {error_type}")
+        
+        logger.debug(f"Recorded embedding batch metrics for request {request_id}")
+        
+    except Exception as e:
+        logger.error(f"Failed to record embedding batch metrics: {e}")
+
+
+async def record_vector_search(
+    request_id: str,
+    vector_store: str,
+    query_length: int,
+    results_count: int,
+    duration: float,
+    success: bool,
+    error_type: Optional[str] = None,
+) -> None:
+    """Record vector search metrics"""
+    try:
+        status = "success" if success else "error"
+        
+        # This would use actual Prometheus metrics if they were defined
+        # For now, just log the metrics
+        logger.info(f"Vector search metrics: {vector_store}, {results_count} results, {status}, {duration:.2f}s")
+        
+        if not success and error_type:
+            logger.error(f"Vector search error: {error_type}")
+        
+        logger.debug(f"Recorded vector search metrics for request {request_id}")
+        
+    except Exception as e:
+        logger.error(f"Failed to record vector search metrics: {e}")
+
+
+async def record_vector_insert(
+    request_id: str,
+    vector_store: str,
+    documents_count: int,
+    duration: float,
+    success: bool,
+    error_type: Optional[str] = None,
+) -> None:
+    """Record vector insert metrics"""
+    try:
+        status = "success" if success else "error"
+        
+        # This would use actual Prometheus metrics if they were defined
+        # For now, just log the metrics
+        logger.info(f"Vector insert metrics: {vector_store}, {documents_count} docs, {status}, {duration:.2f}s")
+        
+        if not success and error_type:
+            logger.error(f"Vector insert error: {error_type}")
+        
+        logger.debug(f"Recorded vector insert metrics for request {request_id}")
+        
+    except Exception as e:
+        logger.error(f"Failed to record vector insert metrics: {e}")
+
+
+async def record_document_processing(
+    request_id: str,
+    document_type: str,
+    file_size: int,
+    chunks_created: int,
+    duration: float,
+    success: bool,
+    error_type: Optional[str] = None,
+) -> None:
+    """Record document processing metrics"""
+    try:
+        status = "success" if success else "error"
+        
+        # This would use actual Prometheus metrics if they were defined
+        # For now, just log the metrics
+        logger.info(f"Document processing metrics: {document_type}, {chunks_created} chunks, {status}, {duration:.2f}s")
+        
+        if not success and error_type:
+            logger.error(f"Document processing error: {error_type}")
+        
+        logger.debug(f"Recorded document processing metrics for request {request_id}")
+        
+    except Exception as e:
+        logger.error(f"Failed to record document processing metrics: {e}")
+
+
+async def record_rag_retrieval(
+    request_id: str,
+    query_length: int,
+    documents_retrieved: int,
+    duration: float,
+    success: bool,
+    error_type: Optional[str] = None,
+) -> None:
+    """Record RAG retrieval metrics"""
+    try:
+        status = "success" if success else "error"
+        
+        # This would use actual Prometheus metrics if they were defined
+        # For now, just log the metrics
+        logger.info(f"RAG retrieval metrics: {documents_retrieved} docs, {status}, {duration:.2f}s")
+        
+        if not success and error_type:
+            logger.error(f"RAG retrieval error: {error_type}")
+        
+        logger.debug(f"Recorded RAG retrieval metrics for request {request_id}")
+        
+    except Exception as e:
+        logger.error(f"Failed to record RAG retrieval metrics: {e}")
+
+
+async def record_rag_indexing(
+    request_id: str,
+    documents_indexed: int,
+    duration: float,
+    success: bool,
+    error_type: Optional[str] = None,
+) -> None:
+    """Record RAG indexing metrics"""
+    try:
+        status = "success" if success else "error"
+        
+        # This would use actual Prometheus metrics if they were defined
+        # For now, just log the metrics
+        logger.info(f"RAG indexing metrics: {documents_indexed} docs, {status}, {duration:.2f}s")
+        
+        if not success and error_type:
+            logger.error(f"RAG indexing error: {error_type}")
+        
+        logger.debug(f"Recorded RAG indexing metrics for request {request_id}")
+        
+    except Exception as e:
+        logger.error(f"Failed to record RAG indexing metrics: {e}") 

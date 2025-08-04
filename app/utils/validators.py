@@ -22,7 +22,8 @@ def validate_language_code(language_code: str) -> bool:
     if not language_code:
         return False
     
-    return language_code.lower() in settings.SUPPORTED_LANGUAGES
+    supported_languages = ["en", "yo"]
+    return language_code.lower() in supported_languages
 
 
 def validate_text_length(text: str, min_length: int = 1, max_length: int = 10000) -> bool:

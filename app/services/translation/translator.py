@@ -39,7 +39,7 @@ class TranslationService:
         try:
             # Initialize LLaMA-4 Maverick for translation
             self.llm = ChatGroq(
-                model="meta-llama/llama-4-maverick-17b-128e-instruct",
+                model=settings.TRANSLATION_MODEL,
                 groq_api_key=settings.GROQ_API_KEY,
                 temperature=0.1,  # Low temperature for consistent translations
                 max_tokens=2048
@@ -218,13 +218,13 @@ class TranslationService:
         source_lang: str,
         target_lang: str,
     ) -> str:
-        """Handle translations involving Yoruba"""
+        """Handle translations involving Yoruba using LLaMA-4 Maverick"""
         try:
             # Preprocess text if needed
             if source_lang == "yo":
                 text = await self.yoruba_processor.preprocess(text)
             
-            # Perform translation (placeholder implementation)
+            # Perform translation using LLaMA-4 Maverick
             translated_text = await self._simple_translate(text, source_lang, target_lang)
             
             # Postprocess text if needed
@@ -244,14 +244,67 @@ class TranslationService:
         target_lang: str,
     ) -> str:
         """
-        Simple translation implementation (placeholder)
-        
-        In a real implementation, this would use:
-        - Fine-tuned translation models
-        - API calls to translation services
-        - Local translation models
+        Translate using LLaMA-4 Maverick model via Groq API
         """
-        # Placeholder translations for demonstration
+        try:
+            # Prepare the prompt for translation
+            if source_lang == "yo" and target_lang == "en":
+                prompt = f"""
+Translate the following Yoruba text to English. Provide only the English translation without any explanations:
+
+Yoruba: {text}
+English:"""
+            else:
+                prompt = f"""
+Translate the following English text to Yoruba. Provide only the Yoruba translation without any explanations:
+
+English: {text}
+Yoruba:"""
+            
+            # Call Groq API with LLaMA-4 Maverick
+            import httpx
+            from app.config import settings
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{settings.GROQ_BASE_URL}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {settings.GROQ_API_KEY}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": settings.TRANSLATION_MODEL,
+                        "messages": [
+                            {"role": "user", "content": prompt}
+                        ],
+                        "temperature": 0.1,
+                        "max_tokens": 1000
+                    },
+                    timeout=30
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    translated_text = result["choices"][0]["message"]["content"].strip()
+                    return translated_text
+                else:
+                    raise Exception(f"Translation API error: {response.status_code}")
+                    
+        except Exception as e:
+            logger.error(f"Translation service error: {e}")
+            # Fallback to simple dictionary for basic words
+            return await self._fallback_translate(text, source_lang, target_lang)
+    
+    async def _fallback_translate(
+        self,
+        text: str,
+        source_lang: str,
+        target_lang: str,
+    ) -> str:
+        """
+        Fallback translation using simple dictionary
+        """
+        # Basic translations for fallback
         translations = {
             ("en", "yo"): {
                 "hello": "bawo",
@@ -302,7 +355,8 @@ class TranslationService:
     
     def _is_language_supported(self, language: str) -> bool:
         """Check if language is supported"""
-        return language.lower() in settings.SUPPORTED_LANGUAGES
+        supported_languages = ["en", "yo"]
+        return language.lower() in supported_languages
     
     async def health_check(self) -> Dict[str, Any]:
         """Perform health check on translation service"""

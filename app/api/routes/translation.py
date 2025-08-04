@@ -7,10 +7,8 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 
 from fastapi import APIRouter, Request, HTTPException, Depends
-from pydantic import BaseModel, Field, validator
-from prometheus_client import Counter, Histogram
+from pydantic import BaseModel, Field, field_validator
 
-from app.config import settings
 from app.services.translation.translator import TranslationService
 from app.core.exceptions import HealthLangException, LanguageNotSupportedError
 from app.utils.logger import get_logger
@@ -20,24 +18,74 @@ logger = get_logger(__name__)
 
 router = APIRouter()
 
+
 # Metrics
-translation_counter = Counter(
-    "healthlang_translations_total",
-    "Total number of translations",
-    ["source_language", "target_language", "status"]
-)
+def get_metrics():
+    """Get or create metrics safely"""
+    try:
+        from prometheus_client import Counter, Histogram
+        from prometheus_client.registry import REGISTRY
+        
+        # Check if metrics already exist
+        existing_metrics = {
+            metric.name: metric 
+            for metric in REGISTRY._collector_to_names.keys()
+        }
+        
+        if "healthlang_translations_total" in existing_metrics:
+            translation_counter = existing_metrics[
+                "healthlang_translations_total"
+            ]
+        else:
+            translation_counter = Counter(
+                "healthlang_translations_total",
+                "Total number of translations",
+                ["source_language", "target_language", "status"]
+            )
+        
+        if "healthlang_translation_duration_seconds" in existing_metrics:
+            translation_duration = existing_metrics[
+                "healthlang_translation_duration_seconds"
+            ]
+        else:
+            translation_duration = Histogram(
+                "healthlang_translation_duration_seconds",
+                "Translation duration in seconds",
+                ["source_language", "target_language"]
+            )
+        
+        if "healthlang_translation_length_chars" in existing_metrics:
+            translation_length = existing_metrics[
+                "healthlang_translation_length_chars"
+            ]
+        else:
+            translation_length = Histogram(
+                "healthlang_translation_length_chars",
+                "Translation text length in characters",
+                ["source_language"]
+            )
+        
+        return translation_counter, translation_duration, translation_length
+        
+    except Exception as e:
+        logger.warning(f"Failed to initialize metrics: {e}")
+        # Create dummy metrics that don't do anything to avoid errors
+        
+        class DummyMetric:
+            def labels(self, **kwargs): 
+                return self
+            
+            def inc(self): 
+                pass
+            
+            def observe(self, value): 
+                pass
+        
+        return DummyMetric(), DummyMetric(), DummyMetric()
 
-translation_duration = Histogram(
-    "healthlang_translation_duration_seconds",
-    "Translation duration in seconds",
-    ["source_language", "target_language"]
-)
 
-translation_length = Histogram(
-    "healthlang_translation_length_chars",
-    "Translation text length in characters",
-    ["source_language"]
-)
+# Initialize metrics
+translation_counter, translation_duration, translation_length = get_metrics()
 
 
 class TranslationRequest(BaseModel):
@@ -48,13 +96,15 @@ class TranslationRequest(BaseModel):
     target_language: str = Field(default="yo", description="Target language code (en, yo)")
     preserve_formatting: bool = Field(default=True, description="Preserve text formatting")
     
-    @validator("text")
+    @field_validator("text")
+    @classmethod
     def validate_text(cls, v):
         if not v.strip():
             raise ValueError("Text cannot be empty")
         return v.strip()
     
-    @validator("source_language", "target_language")
+    @field_validator("source_language", "target_language")
+    @classmethod
     def validate_language_codes(cls, v):
         if not validate_language_code(v):
             raise ValueError(f"Unsupported language code: {v}")
@@ -83,13 +133,15 @@ class BatchTranslationRequest(BaseModel):
     target_language: str = Field(default="yo", description="Target language code (en, yo)")
     preserve_formatting: bool = Field(default=True, description="Preserve text formatting")
     
-    @validator("texts")
+    @field_validator("texts")
+    @classmethod
     def validate_texts(cls, v):
         if not all(text.strip() for text in v):
             raise ValueError("All texts must be non-empty")
         return [text.strip() for text in v]
     
-    @validator("source_language", "target_language")
+    @field_validator("source_language", "target_language")
+    @classmethod
     def validate_language_codes(cls, v):
         if not validate_language_code(v):
             raise ValueError(f"Unsupported language code: {v}")
@@ -114,7 +166,8 @@ class LanguageDetectionRequest(BaseModel):
     
     text: str = Field(..., min_length=1, max_length=10000, description="Text to detect language for")
     
-    @validator("text")
+    @field_validator("text")
+    @classmethod
     def validate_text(cls, v):
         if not v.strip():
             raise ValueError("Text cannot be empty")
@@ -146,7 +199,7 @@ async def get_translation_service() -> TranslationService:
     return translation_service
 
 
-@router.post("/translate", response_model=TranslationResponse)
+@router.post("/", response_model=TranslationResponse)
 async def translate_text(
     request: TranslationRequest,
     http_request: Request,
@@ -213,7 +266,13 @@ async def translate_text(
         )
         
         logger.info(f"Translation completed successfully (ID: {request_id})")
-        return response
+        
+        # Add proper encoding headers for Yoruba characters
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            content=response.model_dump(),
+            headers={"Content-Type": "application/json; charset=utf-8"}
+        )
         
     except LanguageNotSupportedError as e:
         # Record error metrics
@@ -280,7 +339,7 @@ async def translate_text(
         ).observe(duration)
 
 
-@router.post("/translate/batch", response_model=BatchTranslationResponse)
+@router.post("/batch", response_model=BatchTranslationResponse)
 async def translate_batch(
     request: BatchTranslationRequest,
     http_request: Request,
@@ -389,7 +448,7 @@ async def detect_language(
             text=request.text,
             detected_language=detected_language,
             confidence_score=0.9,  # Placeholder - would come from detection service
-            supported_languages=settings.SUPPORTED_LANGUAGES,
+            supported_languages=["en", "yo"],
             processing_time=processing_time,
             timestamp=datetime.now().isoformat(),
         )
@@ -418,7 +477,7 @@ async def get_supported_languages() -> Dict[str, Any]:
         Supported language information
     """
     return {
-        "supported_languages": settings.SUPPORTED_LANGUAGES,
+        "supported_languages": ["en", "yo"],
         "language_names": {
             "en": "English",
             "yo": "Yoruba",
@@ -427,8 +486,8 @@ async def get_supported_languages() -> Dict[str, Any]:
             {"source": "en", "target": "yo", "name": "English to Yoruba"},
             {"source": "yo", "target": "en", "name": "Yoruba to English"},
         ],
-        "default_source": settings.DEFAULT_SOURCE_LANGUAGE,
-        "default_target": settings.DEFAULT_TARGET_LANGUAGE,
+        "default_source": "en",
+        "default_target": "yo",
     }
 
 
@@ -446,7 +505,7 @@ async def get_translation_statistics() -> Dict[str, Any]:
         "successful_translations": 0,
         "failed_translations": 0,
         "average_processing_time": 0.0,
-        "languages_translated": settings.SUPPORTED_LANGUAGES,
+        "languages_translated": ["en", "yo"],
         "timestamp": datetime.now().isoformat(),
     }
 

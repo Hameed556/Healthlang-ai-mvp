@@ -5,7 +5,7 @@ Pydantic models for API request validation.
 """
 
 from typing import Dict, List, Optional, Any, Union
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from enum import Enum
 
 from app.services.medical.medical_analyzer import MedicalQueryType
@@ -42,13 +42,15 @@ class MedicalQueryRequest(BaseModel):
     include_sources: bool = Field(default=True, description="Include source references")
     include_disclaimers: bool = Field(default=True, description="Include medical disclaimers")
     
-    @validator('query')
+    @field_validator('query')
+    @classmethod
     def validate_query(cls, v):
         if not v.strip():
             raise ValueError("Query cannot be empty")
         return v.strip()
     
-    @validator('user_age')
+    @field_validator('user_age')
+    @classmethod
     def validate_age(cls, v):
         if v is not None and (v < 0 or v > 120):
             raise ValueError("Age must be between 0 and 120")
@@ -63,15 +65,17 @@ class TranslationRequest(BaseModel):
     context: Optional[str] = Field(default=None, description="Translation context")
     preserve_formatting: bool = Field(default=True, description="Preserve text formatting")
     
-    @validator('text')
+    @field_validator('text')
+    @classmethod
     def validate_text(cls, v):
         if not v.strip():
             raise ValueError("Text cannot be empty")
         return v.strip()
     
-    @validator('target_language')
-    def validate_languages(cls, v, values):
-        if 'source_language' in values and v == values['source_language']:
+    @field_validator('target_language')
+    @classmethod
+    def validate_languages(cls, v, info):
+        if info.data and 'source_language' in info.data and v == info.data['source_language']:
             raise ValueError("Source and target languages must be different")
         return v
 
@@ -81,7 +85,8 @@ class BatchQueryRequest(BaseModel):
     queries: List[MedicalQueryRequest] = Field(..., min_items=1, max_items=10, description="List of medical queries")
     batch_id: Optional[str] = Field(default=None, description="Batch identifier")
     
-    @validator('queries')
+    @field_validator('queries')
+    @classmethod
     def validate_queries(cls, v):
         if len(v) == 0:
             raise ValueError("At least one query is required")
@@ -100,7 +105,8 @@ class RAGQueryRequest(BaseModel):
     filter_metadata: Optional[Dict[str, Any]] = Field(default=None, description="Metadata filters")
     rerank_results: bool = Field(default=False, description="Apply result reranking")
     
-    @validator('query')
+    @field_validator('query')
+    @classmethod
     def validate_query(cls, v):
         if not v.strip():
             raise ValueError("Query cannot be empty")
@@ -115,7 +121,8 @@ class DocumentIndexRequest(BaseModel):
     chunk_overlap: int = Field(default=200, ge=0, le=1000, description="Chunk overlap size")
     embedding_model: Optional[str] = Field(default=None, description="Embedding model to use")
     
-    @validator('documents')
+    @field_validator('documents')
+    @classmethod
     def validate_documents(cls, v):
         for doc in v:
             if 'content' not in doc or not doc['content']:
@@ -138,7 +145,8 @@ class UserRegistrationRequest(BaseModel):
     full_name: Optional[str] = Field(default=None, description="Full name")
     preferred_language: LanguageCode = Field(default=LanguageCode.ENGLISH, description="Preferred language")
     
-    @validator('email')
+    @field_validator('email')
+    @classmethod
     def validate_email(cls, v):
         import re
         email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
@@ -146,7 +154,8 @@ class UserRegistrationRequest(BaseModel):
             raise ValueError("Invalid email format")
         return v.lower()
     
-    @validator('username')
+    @field_validator('username')
+    @classmethod
     def validate_username(cls, v):
         import re
         if not re.match(r'^[a-zA-Z0-9_]+$', v):
@@ -165,7 +174,8 @@ class PasswordResetRequest(BaseModel):
     """Password reset request model."""
     email: str = Field(..., description="Email address")
     
-    @validator('email')
+    @field_validator('email')
+    @classmethod
     def validate_email(cls, v):
         import re
         email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
@@ -180,9 +190,10 @@ class PasswordChangeRequest(BaseModel):
     new_password: str = Field(..., min_length=8, description="New password")
     confirm_password: str = Field(..., description="Confirm new password")
     
-    @validator('confirm_password')
-    def validate_confirm_password(cls, v, values):
-        if 'new_password' in values and v != values['new_password']:
+    @field_validator('confirm_password')
+    @classmethod
+    def validate_confirm_password(cls, v, info):
+        if info.data and 'new_password' in info.data and v != info.data['new_password']:
             raise ValueError("Passwords do not match")
         return v
 
@@ -194,7 +205,8 @@ class ProfileUpdateRequest(BaseModel):
     preferred_language: Optional[LanguageCode] = Field(default=None, description="Preferred language")
     timezone: Optional[str] = Field(default=None, description="Timezone")
     
-    @validator('email')
+    @field_validator('email')
+    @classmethod
     def validate_email(cls, v):
         if v is not None:
             import re

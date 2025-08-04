@@ -3,16 +3,16 @@ Services package for HealthLang AI MVP
 """
 
 from .translation import TranslationService
-from .medical import GroqLLMClient, MedicalAnalyzer, ResponseFormatter
-from .rag import VectorStore, Retriever, Embeddings, DocumentProcessor
+from .medical import LLMClient, MedicalAnalyzer, ResponseFormatter
+from .rag import VectorStore, RAGRetriever, EmbeddingService, DocumentProcessor
 
 __all__ = [
     "TranslationService",
-    "GroqLLMClient", 
+    "LLMClient", 
     "MedicalAnalyzer",
     "ResponseFormatter",
     "VectorStore",
-    "Retriever",
-    "Embeddings",
+    "RAGRetriever",
+    "EmbeddingService",
     "DocumentProcessor",
 ] 

@@ -37,26 +37,13 @@ def setup_logging() -> None:
     # Remove default loguru handler
     logger.remove()
     
-    # Configure loguru based on settings
-    if settings.LOG_FORMAT.lower() == "json":
-        # JSON format for production
-        log_format = (
-            '{"timestamp": "{{time:YYYY-MM-DD HH:mm:ss.SSS}}", '
-            '"level": "{{level}}", '
-            '"module": "{{name}}", '
-            '"function": "{{function}}", '
-            '"line": {{line}}, '
-            '"message": "{{message}}", '
-            '"extra": {{extra}}}'
-        )
-    else:
-        # Human-readable format for development
-        log_format = (
-            "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
-            "<level>{level: <8}</level> | "
-            "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | "
-            "<level>{message}</level>"
-        )
+    # Configure loguru with human-readable format (simpler for now)
+    log_format = (
+        "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
+        "<level>{level: <8}</level> | "
+        "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | "
+        "<level>{message}</level>"
+    )
     
     # Add console handler
     logger.add(

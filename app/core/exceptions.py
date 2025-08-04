@@ -56,6 +56,30 @@ class MedicalAnalysisError(HealthLangException):
         )
 
 
+class SafetyCheckError(HealthLangException):
+    """Exception raised for safety check failures"""
+    
+    def __init__(self, message: str, check_type: str, details: Optional[Dict[str, Any]] = None):
+        super().__init__(
+            message=message,
+            error_code="SAFETY_CHECK_ERROR",
+            status_code=400,
+            details={"check_type": check_type, **(details or {})},
+        )
+
+
+class FormattingError(HealthLangException):
+    """Exception raised for response formatting errors"""
+    
+    def __init__(self, message: str, format_type: str, details: Optional[Dict[str, Any]] = None):
+        super().__init__(
+            message=message,
+            error_code="FORMATTING_ERROR",
+            status_code=500,
+            details={"format_type": format_type, **(details or {})},
+        )
+
+
 class LLMServiceError(MedicalAnalysisError):
     """Exception raised for LLM service errors"""
     
@@ -85,6 +109,16 @@ class VectorStoreError(RAGError):
         super().__init__(
             message=message,
             details={"store_type": store_type, **(details or {})},
+        )
+
+
+class RetrievalError(RAGError):
+    """Exception raised for retrieval errors"""
+    
+    def __init__(self, message: str, query: str, details: Optional[Dict[str, Any]] = None):
+        super().__init__(
+            message=message,
+            details={"query": query, **(details or {})},
         )
 
 
@@ -192,6 +226,18 @@ class DataProcessingError(HealthLangException):
         )
 
 
+class DocumentProcessingError(HealthLangException):
+    """Exception raised for document processing errors"""
+    
+    def __init__(self, message: str, document_type: str, details: Optional[Dict[str, Any]] = None):
+        super().__init__(
+            message=message,
+            error_code="DOCUMENT_PROCESSING_ERROR",
+            status_code=422,
+            details={"document_type": document_type, **(details or {})},
+        )
+
+
 class CacheError(HealthLangException):
     """Exception raised for cache-related errors"""
     
@@ -209,9 +255,12 @@ ERROR_CODES = {
     "TRANSLATION_ERROR": TranslationError,
     "LANGUAGE_NOT_SUPPORTED": LanguageNotSupportedError,
     "MEDICAL_ANALYSIS_ERROR": MedicalAnalysisError,
+    "SAFETY_CHECK_ERROR": SafetyCheckError,
+    "FORMATTING_ERROR": FormattingError,
     "LLM_SERVICE_ERROR": LLMServiceError,
     "RAG_ERROR": RAGError,
     "VECTOR_STORE_ERROR": VectorStoreError,
+    "RETRIEVAL_ERROR": RetrievalError,
     "EMBEDDING_ERROR": EmbeddingError,
     "CONFIGURATION_ERROR": ConfigurationError,
     "VALIDATION_ERROR": ValidationError,
@@ -221,5 +270,6 @@ ERROR_CODES = {
     "RESOURCE_NOT_FOUND": ResourceNotFoundError,
     "SERVICE_UNAVAILABLE": ServiceUnavailableError,
     "DATA_PROCESSING_ERROR": DataProcessingError,
+    "DOCUMENT_PROCESSING_ERROR": DocumentProcessingError,
     "CACHE_ERROR": CacheError,
 } 

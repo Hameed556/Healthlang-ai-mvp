@@ -7,15 +7,14 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 
 from fastapi import APIRouter, Request, HTTPException, Depends
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from prometheus_client import Counter, Histogram, Gauge
 
 from app.config import settings
-from app.core.pipeline import MedicalQueryPipeline
-from app.core.exceptions import HealthLangException, ValidationError
+from app.core.workflow import HealthLangWorkflow
+from app.core.exceptions import HealthLangException
 from app.utils.logger import get_logger
 from app.utils.metrics import record_query_metrics
-from app.utils.validators import validate_language_code
 
 logger = get_logger(__name__)
 
@@ -49,38 +48,27 @@ active_queries = Gauge(
 class MedicalQueryRequest(BaseModel):
     """Request model for medical queries"""
     
-    text: str = Field(..., min_length=1, max_length=5000, description="Medical question text")
-    source_language: str = Field(default="en", description="Source language code (en, yo)")
-    target_language: Optional[str] = Field(default=None, description="Target language code (en, yo) - if None, matches source_language")
-    translate_response: bool = Field(default=False, description="Whether to translate the response (optional)")
-    use_cache: bool = Field(default=True, description="Whether to use response caching")
-    include_sources: bool = Field(default=True, description="Whether to include source documents")
-    max_tokens: Optional[int] = Field(default=None, ge=1, le=8192, description="Maximum tokens for response")
-    temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0, description="Response creativity (0.0-2.0)")
+    text: str = Field(
+        ..., 
+        min_length=1, 
+        max_length=5000, 
+        description="Medical question text"
+    )
+    use_cache: bool = Field(
+        default=True, 
+        description="Whether to use response caching"
+    )
+    include_sources: bool = Field(
+        default=True, 
+        description="Whether to include source documents"
+    )
     
-    @validator("text")
+    @field_validator("text")
+    @classmethod
     def validate_text(cls, v):
         if not v.strip():
             raise ValueError("Text cannot be empty")
         return v.strip()
-    
-    @validator("source_language")
-    def validate_source_language(cls, v):
-        if not validate_language_code(v):
-            raise ValueError(f"Unsupported language code: {v}")
-        return v.lower()
-    
-    @validator("target_language")
-    def validate_target_language(cls, v):
-        if v is not None and not validate_language_code(v):
-            raise ValueError(f"Unsupported language code: {v}")
-        return v.lower() if v is not None else v
-    
-    @validator("max_tokens")
-    def validate_max_tokens(cls, v):
-        if v is not None and v > settings.MAX_TOKENS:
-            raise ValueError(f"max_tokens cannot exceed {settings.MAX_TOKENS}")
-        return v
 
 
 class MedicalQueryResponse(BaseModel):
@@ -88,45 +76,42 @@ class MedicalQueryResponse(BaseModel):
     
     request_id: str
     original_query: str
-    source_language: str
-    target_language: str
-    translated_query: Optional[str]
     response: str
     processing_time: float
     timestamp: str
     metadata: Dict[str, Any]
-    sources: Optional[list] = None
+    success: bool
+    error: Optional[str] = None
 
 
-# Global pipeline instance
-pipeline: Optional[MedicalQueryPipeline] = None
+# Global workflow instance
+workflow: Optional[HealthLangWorkflow] = None
 
 
-async def get_pipeline() -> MedicalQueryPipeline:
-    """Dependency to get the global pipeline instance"""
-    global pipeline
-    if pipeline is None:
-        pipeline = MedicalQueryPipeline()
-        await pipeline.initialize()
-    return pipeline
+async def get_workflow() -> HealthLangWorkflow:
+    """Dependency to get the global workflow instance"""
+    global workflow
+    if workflow is None:
+        workflow = HealthLangWorkflow()
+    return workflow
 
 
 @router.post("/query", response_model=MedicalQueryResponse)
 async def process_medical_query(
     request: MedicalQueryRequest,
     http_request: Request,
-    pipeline: MedicalQueryPipeline = Depends(get_pipeline),
+    workflow: HealthLangWorkflow = Depends(get_workflow),
 ) -> MedicalQueryResponse:
     """
-    Process a medical query with translation and RAG
+    Process a medical query using LangGraph workflow
     
     This endpoint accepts medical questions in Yoruba or English and returns
-    medically-informed answers with source citations.
+    medically-informed answers using translation and medical reasoning.
     
     Args:
         request: The medical query request
         http_request: The HTTP request object
-        pipeline: The medical query pipeline
+        workflow: The LangGraph workflow
         
     Returns:
         Medical query response with answer and metadata
@@ -141,51 +126,48 @@ async def process_medical_query(
     http_request.state.request_id = request_id
     
     # Record query metrics
-    query_length.labels(source_language=request.source_language).observe(len(request.text))
+    query_length.labels(source_language="auto").observe(len(request.text))
     active_queries.inc()
     
     try:
         logger.info(f"Processing medical query (ID: {request_id}): {request.text[:100]}...")
         
-        # Process the query through the pipeline
-        result = await pipeline.process_query(
-            text=request.text,
-            source_language=request.source_language,
-            target_language=request.target_language,
-            request_id=request_id,
-            use_cache=request.use_cache,
-            translate_response=request.translate_response,
-        )
+        # Process the query through the LangGraph workflow
+        result = await workflow.process_query(request.text)
         
         # Record success metrics
         query_counter.labels(
-            source_language=request.source_language,
-            target_language=request.target_language,
+            source_language="auto",
+            target_language="auto",
             status="success"
         ).inc()
         
         # Build response
         response = MedicalQueryResponse(
-            request_id=result["request_id"],
-            original_query=result["original_query"],
-            source_language=result["source_language"],
-            target_language=result["target_language"],
-            translated_query=result["translated_query"],
+            request_id=request_id,
+            original_query=request.text,
             response=result["response"],
-            processing_time=result["processing_time"],
-            timestamp=result["timestamp"],
+            processing_time=(datetime.now() - start_time).total_seconds(),
+            timestamp=datetime.now().isoformat(),
             metadata=result["metadata"],
-            sources=result["sources"] if request.include_sources else None,
+            success=result["success"],
+            error=result.get("error")
         )
         
         logger.info(f"Query processed successfully (ID: {request_id})")
-        return response
+        
+        # Add proper encoding headers for Yoruba characters
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            content=response.model_dump(),
+            headers={"Content-Type": "application/json; charset=utf-8"}
+        )
         
     except HealthLangException as e:
         # Record error metrics
         query_counter.labels(
-            source_language=request.source_language,
-            target_language=request.target_language,
+            source_language="auto",
+            target_language="auto",
             status="error"
         ).inc()
         
@@ -203,8 +185,8 @@ async def process_medical_query(
     except Exception as e:
         # Record error metrics
         query_counter.labels(
-            source_language=request.source_language,
-            target_language=request.target_language,
+            source_language="auto",
+            target_language="auto",
             status="error"
         ).inc()
         
@@ -222,8 +204,8 @@ async def process_medical_query(
         # Record duration metrics
         duration = (datetime.now() - start_time).total_seconds()
         query_duration.labels(
-            source_language=request.source_language,
-            target_language=request.target_language
+            source_language="auto",
+            target_language="auto"
         ).observe(duration)
         
         active_queries.dec()
@@ -231,8 +213,8 @@ async def process_medical_query(
         # Record additional metrics
         await record_query_metrics(
             request_id=request_id,
-            source_language=request.source_language,
-            target_language=request.target_language,
+            source_language="auto",
+            target_language="auto",
             duration=duration,
             success=True,  # Will be False if exception was raised
         )
@@ -241,14 +223,12 @@ async def process_medical_query(
 @router.get("/query/{request_id}")
 async def get_query_status(
     request_id: str,
-    pipeline: MedicalQueryPipeline = Depends(get_pipeline),
 ) -> Dict[str, Any]:
     """
     Get the status of a previously submitted query
     
     Args:
         request_id: The request ID to check
-        pipeline: The medical query pipeline
         
     Returns:
         Query status information
@@ -277,7 +257,7 @@ async def get_query_status(
 async def process_batch_queries(
     requests: list[MedicalQueryRequest],
     http_request: Request,
-    pipeline: MedicalQueryPipeline = Depends(get_pipeline),
+    workflow: HealthLangWorkflow = Depends(get_workflow),
 ) -> Dict[str, Any]:
     """
     Process multiple medical queries in batch
@@ -285,7 +265,7 @@ async def process_batch_queries(
     Args:
         requests: List of medical query requests
         http_request: The HTTP request object
-        pipeline: The medical query pipeline
+        workflow: The LangGraph workflow
         
     Returns:
         Batch processing results
@@ -311,14 +291,15 @@ async def process_batch_queries(
     for i, request in enumerate(requests):
         request_id = f"{batch_id}-{i+1}"
         try:
-            result = await pipeline.process_query(
-                text=request.text,
-                source_language=request.source_language,
-                target_language=request.target_language,
-                request_id=request_id,
-                use_cache=request.use_cache,
-            )
-            results.append(result)
+            result = await workflow.process_query(request.text)
+            results.append({
+                "request_id": request_id,
+                "original_query": request.text,
+                "response": result["response"],
+                "success": result["success"],
+                "error": result.get("error"),
+                "metadata": result["metadata"]
+            })
         except Exception as e:
             logger.error(f"Error processing batch item {i+1} (ID: {request_id}): {e}")
             errors.append({
@@ -347,13 +328,13 @@ async def get_supported_languages() -> Dict[str, Any]:
         Supported language information
     """
     return {
-        "supported_languages": settings.SUPPORTED_LANGUAGES,
-        "default_source": settings.DEFAULT_SOURCE_LANGUAGE,
-        "default_target": settings.DEFAULT_TARGET_LANGUAGE,
+        "supported_languages": ["en", "yo"],
         "language_names": {
             "en": "English",
             "yo": "Yoruba",
         },
+        "auto_detection": True,
+        "translation_workflow": "LangGraph-based automatic translation"
     }
 
 
@@ -372,6 +353,7 @@ async def get_query_statistics() -> Dict[str, Any]:
         "successful_queries": 0,
         "failed_queries": 0,
         "average_processing_time": 0.0,
-        "languages_processed": settings.SUPPORTED_LANGUAGES,
+        "languages_processed": ["en", "yo"],
+        "workflow_type": "LangGraph",
         "timestamp": datetime.now().isoformat(),
     } 

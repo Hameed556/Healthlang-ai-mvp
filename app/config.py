@@ -4,7 +4,8 @@ Configuration settings for HealthLang AI MVP
 
 import os
 from typing import List, Optional
-from pydantic import BaseSettings, Field, validator
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -14,7 +15,7 @@ class Settings(BaseSettings):
     APP_NAME: str = Field(default="HealthLang AI MVP", env="APP_NAME")
     APP_VERSION: str = Field(default="0.1.0", env="APP_VERSION")
     DEBUG: bool = Field(default=False, env="DEBUG")
-    ENVIRONMENT: str = Field(default="production", env="ENVIRONMENT")
+    ENVIRONMENT: str = Field(default="development", env="ENVIRONMENT")
     
     # Server Configuration
     HOST: str = Field(default="0.0.0.0", env="HOST")
@@ -23,8 +24,8 @@ class Settings(BaseSettings):
     RELOAD: bool = Field(default=False, env="RELOAD")
     
     # API Keys and External Services
-    GROQ_API_KEY: str = Field(..., env="GROQ_API_KEY")
-    XAI_GROK_API_KEY: str = Field(..., env="XAI_GROK_API_KEY")
+    GROQ_API_KEY: str = Field(default="test_api_key_for_development", env="GROQ_API_KEY")
+    XAI_GROK_API_KEY: str = Field(default="test_api_key_for_development", env="XAI_GROK_API_KEY")
     GROQ_BASE_URL: str = Field(default="https://api.groq.com/openai/v1", env="GROQ_BASE_URL")
     XAI_GROK_BASE_URL: str = Field(default="https://api.x.ai/v1", env="XAI_GROK_BASE_URL")
     LOCAL_MODEL_ENDPOINT: Optional[str] = Field(default=None, env="LOCAL_MODEL_ENDPOINT")
@@ -43,11 +44,14 @@ class Settings(BaseSettings):
     # Additional Embedding Models
     ADDITIONAL_EMBEDDING_MODELS: List[str] = Field(default=[], env="ADDITIONAL_EMBEDDING_MODELS")
     
-    @validator("ADDITIONAL_EMBEDDING_MODELS", pre=True)
+    @field_validator("ADDITIONAL_EMBEDDING_MODELS", mode="before")
+    @classmethod
     def parse_additional_embedding_models(cls, v):
         if isinstance(v, str):
+            if not v or v.strip() == "":
+                return []
             return [model.strip() for model in v.split(",") if model.strip()]
-        return v
+        return v or []
     
     # Database Configuration
     DATABASE_URL: str = Field(default="sqlite:///./healthlang.db", env="DATABASE_URL")
@@ -63,19 +67,12 @@ class Settings(BaseSettings):
     
     # Translation Configuration
     TRANSLATION_MODEL_PATH: str = Field(default="./data/models/translation", env="TRANSLATION_MODEL_PATH")
-    DEFAULT_SOURCE_LANGUAGE: str = Field(default="en", env="DEFAULT_SOURCE_LANGUAGE")
-    DEFAULT_TARGET_LANGUAGE: str = Field(default="yo", env="DEFAULT_TARGET_LANGUAGE")
-    SUPPORTED_LANGUAGES: List[str] = Field(default=["en", "yo"], env="SUPPORTED_LANGUAGES")
-    
-    @validator("SUPPORTED_LANGUAGES", pre=True)
-    def parse_supported_languages(cls, v):
-        if isinstance(v, str):
-            return [lang.strip() for lang in v.split(",")]
-        return v
+    TRANSLATION_MODEL: str = Field(default="meta-llama/Llama-4-Maverick-17B-128E-Instruct", env="TRANSLATION_MODEL")
+    TRANSLATION_PROVIDER: str = Field(default="groq", env="TRANSLATION_PROVIDER")
     
     # Medical Analysis Configuration
-    MEDICAL_MODEL_NAME: str = Field(default="llama-3-8b-8192", env="MEDICAL_MODEL_NAME")
-    MEDICAL_MODEL_PROVIDER: str = Field(default="groq", env="MEDICAL_MODEL_PROVIDER")
+    MEDICAL_MODEL_NAME: str = Field(default="grok-beta", env="MEDICAL_MODEL_NAME")
+    MEDICAL_MODEL_PROVIDER: str = Field(default="xai", env="MEDICAL_MODEL_PROVIDER")
     MAX_TOKENS: int = Field(default=2048, env="MAX_TOKENS")  # Reduced for faster responses
     TEMPERATURE: float = Field(default=0.1, env="TEMPERATURE")
     TOP_P: float = Field(default=0.9, env="TOP_P")
@@ -90,18 +87,20 @@ class Settings(BaseSettings):
     SECRET_KEY: str = Field(default="your_secret_key_here_change_in_production", env="SECRET_KEY")
     ALGORITHM: str = Field(default="HS256", env="ALGORITHM")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=30, env="ACCESS_TOKEN_EXPIRE_MINUTES")
-    CORS_ORIGINS: List[str] = Field(default=["http://localhost:3000", "http://localhost:8000"], env="CORS_ORIGINS")
+    CORS_ORIGINS: str = Field(default="http://localhost:3000,http://localhost:8000", env="CORS_ORIGINS")
     
-    @validator("CORS_ORIGINS", pre=True)
+    @field_validator("CORS_ORIGINS")
+    @classmethod
     def parse_cors_origins(cls, v):
         if isinstance(v, str):
-            # Handle JSON string format
-            import json
-            try:
-                return json.loads(v)
-            except json.JSONDecodeError:
-                return [origin.strip() for origin in v.split(",")]
-        return v
+            # Parse comma-separated string into list
+            if v and v.strip():
+                return [origin.strip() for origin in v.split(",") if origin.strip()]
+            else:
+                return ["http://localhost:3000", "http://localhost:8000"]  # Default fallback
+        elif isinstance(v, list):
+            return v
+        return ["http://localhost:3000", "http://localhost:8000"]  # Default fallback
     
     # Rate Limiting
     RATE_LIMIT_PER_MINUTE: int = Field(default=120, env="RATE_LIMIT_PER_MINUTE")  # Increased for Render
@@ -123,18 +122,26 @@ class Settings(BaseSettings):
     
     # File Upload Configuration
     MAX_FILE_SIZE: int = Field(default=10485760, env="MAX_FILE_SIZE")  # 10MB
-    ALLOWED_FILE_TYPES: List[str] = Field(default=["pdf", "docx", "txt", "md"], env="ALLOWED_FILE_TYPES")
+    ALLOWED_FILE_TYPES: str = Field(default="pdf,docx,txt,md", env="ALLOWED_FILE_TYPES")
     
-    @validator("ALLOWED_FILE_TYPES", pre=True)
+    @field_validator("ALLOWED_FILE_TYPES")
+    @classmethod
     def parse_allowed_file_types(cls, v):
         if isinstance(v, str):
-            return [ftype.strip() for ftype in v.split(",")]
-        return v
+            return [ftype.strip() for ftype in v.split(",") if ftype.strip()]
+        elif isinstance(v, list):
+            return v
+        return ["pdf", "docx", "txt", "md"]
     
     # Medical Knowledge Sources
     MEDICAL_SOURCES_PATH: str = Field(default="./data/medical_knowledge/raw", env="MEDICAL_SOURCES_PATH")
     WHO_GUIDELINES_URL: str = Field(default="https://www.who.int/health-topics", env="WHO_GUIDELINES_URL")
     CDC_GUIDELINES_URL: str = Field(default="https://www.cdc.gov/healthcommunication", env="CDC_GUIDELINES_URL")
+    
+    # MCP Configuration
+    MCP_ENABLED: bool = Field(default=False, env="MCP_ENABLED")
+    MCP_HEALTHCARE_SERVER_PATH: str = Field(default="./mcp_servers/healthcare_server.py", env="MCP_HEALTHCARE_SERVER_PATH")
+    MCP_TIMEOUT: int = Field(default=30, env="MCP_TIMEOUT")
     
     # Development Configuration
     TESTING: bool = Field(default=False, env="TESTING")
@@ -154,10 +161,12 @@ class Settings(BaseSettings):
     K8S_RESOURCE_REQUESTS_CPU: str = Field(default="500m", env="K8S_RESOURCE_REQUESTS_CPU")
     K8S_RESOURCE_REQUESTS_MEMORY: str = Field(default="1Gi", env="K8S_RESOURCE_REQUESTS_MEMORY")
     
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = True
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "case_sensitive": True,
+        "extra": "ignore"
+    }
     
     def is_development(self) -> bool:
         """Check if running in development mode"""
@@ -179,12 +188,15 @@ class Settings(BaseSettings):
     
     def validate_settings(self) -> None:
         """Validate critical settings"""
-        if not self.GROQ_API_KEY or self.GROQ_API_KEY == "your_groq_api_key_here":
-            raise ValueError("GROQ_API_KEY must be set")
+        # Only validate API keys in production
+        if self.is_production():
+            if not self.GROQ_API_KEY or self.GROQ_API_KEY == "your_real_groq_api_key_here":
+                raise ValueError("GROQ_API_KEY must be set")
+            
+            if self.SECRET_KEY == "your_secret_key_here_change_in_production":
+                raise ValueError("SECRET_KEY must be changed in production")
         
-        if self.SECRET_KEY == "your_secret_key_here_change_in_production" and self.is_production():
-            raise ValueError("SECRET_KEY must be changed in production")
-        
+        # Create necessary directories
         if not os.path.exists(self.CHROMA_DB_PATH):
             os.makedirs(self.CHROMA_DB_PATH, exist_ok=True)
         

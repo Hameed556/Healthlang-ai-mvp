@@ -16,9 +16,9 @@ from app.core.exceptions import (
     RAGError,
 )
 from app.services.translation.translator import TranslationService
-from app.services.medical.llm_client import GroqLLMClient
+from app.services.medical.llm_client import LLMClient
 from app.services.rag.vector_store import VectorStore
-from app.services.rag.retriever import Retriever
+from app.services.rag.retriever import RAGRetriever
 from app.services.medical.medical_analyzer import MedicalAnalyzer
 from app.services.medical.response_formatter import ResponseFormatter
 from app.utils.logger import get_logger
@@ -50,9 +50,9 @@ class MedicalQueryPipeline:
     
     def __init__(self):
         self.translation_service: Optional[TranslationService] = None
-        self.llm_client: Optional[GroqLLMClient] = None
+        self.llm_client: Optional[LLMClient] = None
         self.vector_store: Optional[VectorStore] = None
-        self.retriever: Optional[Retriever] = None
+        self.retriever: Optional[RAGRetriever] = None
         self.medical_analyzer: Optional[MedicalAnalyzer] = None
         self.response_formatter: Optional[ResponseFormatter] = None
         self.cache: Optional[Cache] = None
@@ -70,13 +70,13 @@ class MedicalQueryPipeline:
             self.translation_service = TranslationService()
             await self.translation_service.initialize()
             
-            self.llm_client = GroqLLMClient()
+            self.llm_client = LLMClient()
             await self.llm_client.initialize()
             
             self.vector_store = VectorStore()
             await self.vector_store.initialize()
             
-            self.retriever = Retriever(self.vector_store)
+            self.retriever = RAGRetriever(self.vector_store)
             await self.retriever.initialize()
             
             self.medical_analyzer = MedicalAnalyzer(self.llm_client)

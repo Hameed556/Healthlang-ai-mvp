@@ -80,6 +80,17 @@ msgpack==1.0.7
 docker==6.1.3
 kubernetes==28.1.0
 
+# LangGraph and workflow orchestration
+langgraph==0.2.0
+langchain==0.2.0
+langchain-core==0.2.0
+
+# MCP (Model Context Protocol)
+mcp==1.0.0
+
+# XAI Grok API client
+xai==0.1.0
+
 # Optional: GPU support (uncomment if using CUDA)
 # torch==2.1.2+cu118 --index-url https://download.pytorch.org/whl/cu118
 # faiss-gpu==1.7.4 

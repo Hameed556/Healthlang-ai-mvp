@@ -14,47 +14,36 @@ from prometheus_client import make_asgi_app
 
 from app.config import settings
 from app.core.exceptions import HealthLangException
-from app.utils.logger import setup_logging
+from app.utils.logger import setup_logging, get_logger
 from app.api.routes import health, query, translation
 from app.api.middleware.cors import setup_cors
 from app.api.middleware.logging import setup_logging_middleware
 from app.api.middleware.rate_limiting import setup_rate_limiting
-from app.services.translation.translator import TranslationService
-from app.services.medical.llm_client import GroqLLMClient
-from app.services.rag.vector_store import VectorStore
+from app.core.workflow import HealthLangWorkflow
 from app.utils.metrics import setup_metrics
 
 # Setup logging
-logger = setup_logging()
+setup_logging()
+logger = get_logger(__name__)
 
-# Global service instances
-translation_service: TranslationService = None
-llm_client: GroqLLMClient = None
-vector_store: VectorStore = None
+# Global workflow instance
+workflow: HealthLangWorkflow = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager"""
-    global translation_service, llm_client, vector_store
+    global workflow
     
     logger.info("Starting HealthLang AI MVP application...")
     
     try:
-        # Initialize services
-        logger.info("Initializing translation service...")
-        translation_service = TranslationService()
-        await translation_service.initialize()
+        # Initialize workflow
+        logger.info("Initializing HealthLang workflow...")
+        workflow = HealthLangWorkflow()
+        await workflow.initialize()
         
-        logger.info("Initializing LLM client...")
-        llm_client = GroqLLMClient()
-        await llm_client.initialize()
-        
-        logger.info("Initializing vector store...")
-        vector_store = VectorStore()
-        await vector_store.initialize()
-        
-        logger.info("All services initialized successfully")
+        logger.info("Workflow initialized successfully")
         
         yield
         
@@ -64,13 +53,9 @@ async def lifespan(app: FastAPI):
     finally:
         logger.info("Shutting down HealthLang AI MVP application...")
         
-        # Cleanup services
-        if translation_service:
-            await translation_service.cleanup()
-        if llm_client:
-            await llm_client.cleanup()
-        if vector_store:
-            await vector_store.cleanup()
+        # Cleanup workflow
+        if workflow:
+            await workflow.cleanup()
 
 
 # Create FastAPI application
@@ -78,10 +63,12 @@ app = FastAPI(
     title=settings.APP_NAME,
     description="Bilingual (Yoruba-English) medical Q&A system with Groq-accelerated LLMs and RAG",
     version=settings.APP_VERSION,
-    docs_url="/docs" if settings.DEBUG else None,
-    redoc_url="/redoc" if settings.DEBUG else None,
-    openapi_url="/openapi.json" if settings.DEBUG else None,
+    docs_url="/docs",  # Always enable docs
+    redoc_url="/redoc",  # Always enable redoc
+    openapi_url="/openapi.json",  # Always enable openapi
     lifespan=lifespan,
+    # Ensure proper UTF-8 encoding for Yoruba characters
+    default_response_class=JSONResponse,
 )
 
 # Setup middleware
@@ -128,7 +115,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 # Include routers
 app.include_router(health.router, prefix="/health", tags=["health"])
 app.include_router(query.router, prefix="/api/v1", tags=["query"])
-app.include_router(translation.router, prefix="/api/v1", tags=["translation"])
+app.include_router(translation.router, prefix="/api/v1/translate", tags=["translation"])
 
 
 @app.get("/")
@@ -150,7 +137,7 @@ async def info() -> Dict[str, Any]:
         "version": settings.APP_VERSION,
         "environment": settings.ENVIRONMENT,
         "debug": settings.DEBUG,
-        "supported_languages": settings.SUPPORTED_LANGUAGES,
+        "supported_languages": ["en", "yo"],
         "rag_enabled": settings.RAG_ENABLED,
         "medical_model": settings.MEDICAL_MODEL_NAME,
         "vector_db_type": settings.VECTOR_DB_TYPE,

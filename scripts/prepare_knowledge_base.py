@@ -11,8 +11,8 @@ PROCESSED_DIR = Path('data/medical_knowledge/processed')
 PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
 # File paths
-SYMPTOMS_CSV = RAW_DIR / 'diseases_symptoms.csv'
-PRECAUTIONS_CSV = RAW_DIR / 'disease_precautions.csv'
+SYMPTOMS_CSV = RAW_DIR / 'Disease_and_Symptoms.csv'
+PRECAUTIONS_CSV = RAW_DIR / 'Disease_precaution.csv'
 LINKS_TXT = RAW_DIR / 'health_sources_list.txt'
 
 SYMPTOMS_OUT = PROCESSED_DIR / 'diseases_symptoms_cleaned.json'
