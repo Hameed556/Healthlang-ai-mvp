@@ -4,14 +4,20 @@ MCP Client for HealthLang AI
 Handles communication with MCP servers for medical tools.
 """
 
-import asyncio
-import json
 import logging
 from typing import Any, Dict, List, Optional
 from contextlib import AsyncExitStack
 
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
+# Conditional MCP import
+try:
+    from mcp import ClientSession, StdioServerParameters
+    from mcp.client.stdio import stdio_client
+    MCP_AVAILABLE = True
+except ImportError:
+    MCP_AVAILABLE = False
+    ClientSession = None
+    StdioServerParameters = None
+    stdio_client = None
 
 from app.config import settings
 from app.utils.logger import get_logger
@@ -23,6 +29,9 @@ class MCPClient:
     """MCP client for communicating with healthcare servers"""
     
     def __init__(self):
+        if not MCP_AVAILABLE:
+            raise ImportError("MCP module is not available. Please install the 'mcp' package.")
+        
         self.session: Optional[ClientSession] = None
         self.exit_stack = AsyncExitStack()
         self._initialized = False
@@ -89,7 +98,7 @@ class MCPClient:
             logger.error(f"Failed to connect to healthcare server: {e}")
             raise
     
-    async def get_available_tools(self) -> List[Dict[str, Any]]:
+    async def list_tools(self) -> List[Dict[str, Any]]:
         """Get list of available tools from the MCP server"""
         try:
             if not self.session:
@@ -102,115 +111,105 @@ class MCPClient:
                 tools.append({
                     "name": tool.name,
                     "description": tool.description,
-                    "input_schema": tool.inputSchema
+                    "inputSchema": tool.inputSchema
                 })
             
             return tools
             
         except Exception as e:
-            logger.error(f"Error getting available tools: {e}")
+            logger.error(f"Failed to get available tools: {e}")
             return []
     
-    async def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> str:
-        """Call a tool on the MCP server"""
+    async def call_tool(self, tool_name: str, arguments: str) -> str:
+        """Call a specific tool on the MCP server"""
         try:
             if not self.session:
-                raise Exception("MCP session not initialized")
+                return f"Tool {tool_name} not available (no active session)"
+            
+            # Parse arguments if they're passed as a string
+            if isinstance(arguments, str):
+                try:
+                    import json
+                    arguments = json.loads(arguments)
+                except json.JSONDecodeError:
+                    arguments = {"query": arguments}
             
             # Call the tool
-            result = await self.session.call_tool(tool_name, arguments)
+            response = await self.session.call_tool(tool_name, arguments)
             
-            # Extract content from result
-            if result.content:
-                return result.content[0].text
+            # Return the result
+            if response.content:
+                return response.content[0].text
             else:
-                return "No result returned from tool"
+                return f"Tool {tool_name} returned no content"
                 
         except Exception as e:
-            logger.error(f"Error calling tool {tool_name}: {e}")
-            raise Exception(f"Tool call failed: {str(e)}")
+            logger.error(f"Failed to call tool {tool_name}: {e}")
+            return f"Error calling tool {tool_name}: {str(e)}"
     
     async def medical_lookup(self, query: str) -> str:
-        """Look up medical information"""
-        try:
-            return await self.call_tool("medical_lookup", {"query": query})
-        except Exception as e:
-            logger.error(f"Medical lookup failed: {e}")
-            return f"Medical lookup failed: {str(e)}"
+        """Perform medical information lookup"""
+        return await self.call_tool("medical_lookup", {"query": query})
     
     async def icd10_lookup(self, condition: str) -> str:
-        """Look up ICD-10 codes"""
-        try:
-            return await self.call_tool("icd10_lookup", {"condition": condition})
-        except Exception as e:
-            logger.error(f"ICD-10 lookup failed: {e}")
-            return f"ICD-10 lookup failed: {str(e)}"
+        """Look up ICD-10 codes for a condition"""
+        return await self.call_tool("icd10_lookup", {"condition": condition})
     
     async def pubmed_search(self, query: str, max_results: int = 5) -> str:
-        """Search PubMed for medical articles"""
-        try:
-            return await self.call_tool("pubmed_search", {
-                "query": query,
-                "max_results": max_results
-            })
-        except Exception as e:
-            logger.error(f"PubMed search failed: {e}")
-            return f"PubMed search failed: {str(e)}"
+        """Search PubMed for medical literature"""
+        return await self.call_tool("pubmed_search", {
+            "query": query,
+            "max_results": max_results
+        })
     
     async def drug_interaction_check(self, drugs: List[str]) -> str:
         """Check for drug interactions"""
-        try:
-            return await self.call_tool("drug_interaction_check", {"drugs": drugs})
-        except Exception as e:
-            logger.error(f"Drug interaction check failed: {e}")
-            return f"Drug interaction check failed: {str(e)}"
+        return await self.call_tool("drug_interaction_check", {"drugs": drugs})
     
     async def symptom_checker(self, symptoms: List[str], age: Optional[int] = None, gender: Optional[str] = None) -> str:
-        """Check symptoms and get potential conditions"""
-        try:
-            args = {"symptoms": symptoms}
-            if age:
-                args["age"] = age
-            if gender:
-                args["gender"] = gender
-            
-            return await self.call_tool("symptom_checker", args)
-        except Exception as e:
-            logger.error(f"Symptom checker failed: {e}")
-            return f"Symptom checker failed: {str(e)}"
+        """Check symptoms and suggest possible conditions"""
+        args = {"symptoms": symptoms}
+        if age:
+            args["age"] = age
+        if gender:
+            args["gender"] = gender
+        return await self.call_tool("symptom_checker", args)
+    
+    def is_connected(self) -> bool:
+        """Check if the MCP client is connected"""
+        return self.session is not None and self._initialized
     
     async def cleanup(self) -> None:
         """Cleanup MCP client resources"""
         try:
             if self.exit_stack:
                 await self.exit_stack.aclose()
-            
             self._initialized = False
-            logger.info("MCP client cleanup completed")
-            
+            logger.info("MCP client cleaned up successfully")
         except Exception as e:
-            logger.error(f"Error during MCP client cleanup: {e}")
+            logger.error(f"Failed to cleanup MCP client: {e}")
     
     async def health_check(self) -> Dict[str, Any]:
         """Perform health check on MCP client"""
         try:
-            if not self._initialized:
-                return {"status": "not_initialized"}
-            
-            if not self.session:
-                return {"status": "no_session"}
+            if not self.is_connected():
+                return {
+                    "status": "disconnected",
+                    "message": "MCP client is not connected"
+                }
             
             # Try to list tools as a health check
-            tools = await self.get_available_tools()
+            tools = await self.list_tools()
             
             return {
                 "status": "healthy",
-                "tools_available": len(tools),
-                "tool_names": [tool["name"] for tool in tools]
+                "message": "MCP client is connected and responsive",
+                "available_tools": len(tools),
+                "tools": [tool["name"] for tool in tools]
             }
             
         except Exception as e:
             return {
                 "status": "unhealthy",
-                "error": str(e)
+                "message": f"MCP client health check failed: {str(e)}"
             } 

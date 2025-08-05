@@ -14,8 +14,15 @@ import httpx
 from langchain_core.messages import HumanMessage, AIMessage
 
 from app.config import settings
-from app.services.mcp import MCPClient
 from app.utils.logger import get_logger
+
+# Conditional MCP import
+try:
+    from app.services.mcp import MCPClient
+    MCP_AVAILABLE = True
+except ImportError:
+    MCP_AVAILABLE = False
+    MCPClient = None
 
 logger = get_logger(__name__)
 
@@ -36,7 +43,10 @@ class HealthLangWorkflow:
     """Main workflow orchestrator for HealthLang AI"""
     
     def __init__(self):
-        self.mcp_client = MCPClient()
+        if MCP_AVAILABLE and settings.MCP_ENABLED:
+            self.mcp_client = MCPClient()
+        else:
+            self.mcp_client = None
         
     async def _detect_language(self, query: str) -> str:
         """Detect the language of the input query"""
@@ -224,7 +234,7 @@ Provide a detailed, accurate medical response. If you need to use any tools, spe
     async def _get_mcp_tools(self) -> List[Dict]:
         """Get available MCP tools"""
         try:
-            if self.mcp_client.is_connected():
+            if self.mcp_client and hasattr(self.mcp_client, 'is_connected') and self.mcp_client.is_connected():
                 return await self.mcp_client.list_tools()
             else:
                 return []
@@ -235,7 +245,7 @@ Provide a detailed, accurate medical response. If you need to use any tools, spe
     async def _call_mcp_tool(self, tool_name: str, arguments: str) -> str:
         """Call an MCP tool"""
         try:
-            if self.mcp_client.is_connected():
+            if self.mcp_client and hasattr(self.mcp_client, 'is_connected') and self.mcp_client.is_connected():
                 return await self.mcp_client.call_tool(tool_name, arguments)
             else:
                 return f"Tool {tool_name} not available (MCP not connected)"
@@ -247,7 +257,8 @@ Provide a detailed, accurate medical response. If you need to use any tools, spe
         """Initialize the workflow"""
         try:
             logger.info("Initializing HealthLang workflow...")
-            await self.mcp_client.initialize()
+            if self.mcp_client:
+                await self.mcp_client.initialize()
             logger.info("HealthLang workflow initialized successfully")
         except Exception as e:
             logger.warning(f"Workflow initialization failed (continuing without MCP): {e}")
@@ -255,7 +266,8 @@ Provide a detailed, accurate medical response. If you need to use any tools, spe
     async def cleanup(self) -> None:
         """Cleanup resources"""
         try:
-            await self.mcp_client.cleanup()
+            if self.mcp_client:
+                await self.mcp_client.cleanup()
         except Exception as e:
             logger.error(f"Workflow cleanup failed: {e}")
     

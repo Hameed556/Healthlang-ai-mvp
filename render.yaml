@@ -3,7 +3,7 @@ services:
     name: healthlang-ai-mvp
     env: python
     plan: starter  # Can be upgraded to professional for better performance
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements-prod.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1
     envVars:
       - key: PYTHON_VERSION
@@ -98,6 +98,8 @@ services:
         value: 10485760
       - key: ALLOWED_FILE_TYPES
         value: pdf,docx,txt,md
+      - key: MCP_ENABLED
+        value: false
       - key: TESTING
         value: false
       - key: MOCK_GROQ_RESPONSES
