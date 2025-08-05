@@ -18,10 +18,10 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Copy requirements first for better caching
-COPY requirements.txt requirements-prod.txt pyproject.toml ./
+COPY requirements.txt requirements-prod.txt requirements-minimal.txt pyproject.toml ./
 
-# Install Python dependencies (use production requirements for smaller image)
-RUN pip install --no-cache-dir -r requirements-prod.txt
+# Install Python dependencies (use minimal requirements to avoid conflicts)
+RUN pip install --no-cache-dir -r requirements-minimal.txt
 
 # Development stage
 FROM base as development

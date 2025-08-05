@@ -1,331 +1,197 @@
-# Render Deployment Guide
+# HealthLang AI MVP - Render Deployment Guide
 
-This guide walks you through deploying HealthLang AI MVP on Render with optimized settings for fast, accurate responses.
+## 🚀 **Deployment to Render**
 
-## 🚀 **Deployment Overview**
-
-### **What We're Deploying**
-- **Bilingual Medical Q&A System** (Yoruba ↔ English)
-- **Language-Matching Responses** (default behavior)
-- **Optional Translation** (when requested)
-- **Optimized for Speed** (1.8-2.2s response times)
-- **Production-Ready** with monitoring and caching
-
-### **Performance Optimizations**
-- **Reduced token limits** (2048 tokens)
-- **Fewer RAG documents** (3 documents)
-- **Enhanced caching** (2-hour TTL, 2000 entries)
-- **Higher similarity threshold** (0.75)
-- **Increased rate limits** (120/min, 2000/hour)
+This guide will help you deploy the HealthLang AI MVP to Render successfully.
 
 ## 📋 **Prerequisites**
 
-### **1. Render Account**
-- Sign up at [render.com](https://render.com)
-- Choose a plan (Starter recommended for MVP)
-
-### **2. API Keys**
-- **Groq API Key** (required)
-- **OpenAI API Key** (optional backup)
-- **Anthropic API Key** (optional backup)
-
-### **3. Repository**
-- Push your code to GitHub/GitLab
-- Ensure `render.yaml` is in the root directory
+1. **GitHub Repository**: Your code should be pushed to GitHub
+2. **Render Account**: Sign up at [render.com](https://render.com)
+3. **API Keys**: Ensure you have your API keys ready
 
 ## 🔧 **Deployment Steps**
 
-### **Step 1: Connect Repository**
+### **1. Create a New Web Service on Render**
 
-1. **Log into Render Dashboard**
-2. **Click "New +"** → **"Web Service"**
-3. **Connect your repository** (GitHub/GitLab)
-4. **Select the repository** containing HealthLang AI MVP
+1. Go to your Render dashboard
+2. Click "New +" and select "Web Service"
+3. Connect your GitHub repository
+4. Select the repository: `Healthlang-ai-mvp`
 
-### **Step 2: Configure Service**
+### **2. Configure the Web Service**
 
-1. **Service Name**: `healthlang-ai-mvp`
-2. **Environment**: `Python 3`
-3. **Build Command**: `pip install -r requirements.txt`
-4. **Start Command**: `uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1`
+**Basic Settings:**
+- **Name**: `healthlang-ai-mvp` (or your preferred name)
+- **Environment**: `Python 3`
+- **Region**: Choose closest to your users
+- **Branch**: `main`
 
-### **Step 3: Set Environment Variables**
+**Build & Deploy Settings:**
+- **Build Command**: `pip install -r requirements-prod.txt`
+- **Start Command**: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
 
-In the Render dashboard, add these environment variables:
+### **3. Environment Variables**
 
-#### **Required Variables**
+Add these environment variables in Render:
+
 ```bash
+# Required API Keys
 GROQ_API_KEY=your_groq_api_key_here
-```
+XAI_GROK_API_KEY=your_xai_api_key_here
 
-#### **Optional Variables**
-```bash
-OPENAI_API_KEY=your_openai_api_key_here
-ANTHROPIC_API_KEY=your_anthropic_api_key_here
-```
-
-#### **Performance Variables** (already set in render.yaml)
-```bash
-ENVIRONMENT=production
+# Application Settings
+APP_NAME=HealthLang AI MVP
+APP_VERSION=0.1.1
 DEBUG=false
+
+# Model Configuration
+TRANSLATION_MODEL=meta-llama/Llama-4-Maverick-17B-128E-Instruct
+MEDICAL_MODEL_NAME=meta-llama/Llama-4-Maverick-17B-128E-Instruct
+LLM_PROVIDER=groq
+
+# API Configuration
+XAI_GROK_BASE_URL=https://api.x.ai/v1
+GROQ_BASE_URL=https://api.groq.com/openai/v1
+
+# Performance Settings
+LLM_TIMEOUT=30
+TEMPERATURE=0.1
 MAX_TOKENS=2048
-MAX_RETRIEVAL_DOCS=3
-SIMILARITY_THRESHOLD=0.75
-CACHE_TTL=7200
-CACHE_MAX_SIZE=2000
-RATE_LIMIT_PER_MINUTE=120
-RATE_LIMIT_PER_HOUR=2000
+TOP_P=0.9
+
+# Logging
+LOG_LEVEL=info
 ```
 
-### **Step 4: Configure Resources**
+### **4. Advanced Settings**
 
-1. **Plan**: Starter (recommended for MVP)
-2. **Instance Type**: Standard
-3. **Auto-Deploy**: Enabled
-4. **Health Check Path**: `/health`
+**Auto-Deploy:**
+- ✅ Enable "Auto-Deploy" for automatic deployments on push
 
-### **Step 5: Deploy**
+**Health Check Path:**
+- Set to: `/health`
 
-1. **Click "Create Web Service"**
-2. **Wait for build** (5-10 minutes)
-3. **Monitor logs** for any issues
-4. **Test the deployment**
+**Instance Type:**
+- **Free Tier**: For testing (limited resources)
+- **Standard**: For production (recommended)
 
-## 🧪 **Testing Your Deployment**
+## 🔍 **Troubleshooting**
+
+### **Common Issues:**
+
+#### **1. Dependency Conflicts (RESOLVED)**
+- ✅ Fixed: `langchain-core>=0.2.27` requirement
+- ✅ Fixed: Using `requirements-prod.txt` for production
+
+#### **2. Build Failures**
+If you encounter build issues:
+
+```bash
+# Check the build logs in Render
+# Common fixes:
+pip install --upgrade pip
+pip install -r requirements-prod.txt --no-cache-dir
+```
+
+#### **3. Port Configuration**
+Ensure your app uses the `$PORT` environment variable:
+
+```python
+# In your main.py or startup command
+uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
+
+#### **4. Memory Issues**
+If you get memory errors:
+- Upgrade to a larger instance type
+- Consider using `requirements-prod.txt` (already configured)
+
+### **5. Health Check Issues**
+If health checks fail:
+- Ensure `/health` endpoint returns 200
+- Check that the app starts within the timeout period
+
+## 📊 **Monitoring**
+
+### **Health Check Endpoints:**
+- **Basic Health**: `https://your-app.onrender.com/health`
+- **Detailed Health**: `https://your-app.onrender.com/health/detailed`
+- **API Documentation**: `https://your-app.onrender.com/docs`
+
+### **Logs:**
+- View logs in the Render dashboard
+- Monitor for any startup errors
+- Check API key configuration
+
+## 🧪 **Testing After Deployment**
 
 ### **1. Health Check**
 ```bash
-curl https://your-app-name.onrender.com/health
+curl https://your-app.onrender.com/health
 ```
 
-**Expected Response:**
-```json
-{
-  "status": "healthy",
-  "timestamp": "2024-01-15T10:30:00Z",
-  "version": "0.1.0",
-  "services": {
-    "translation": "healthy",
-    "medical_analysis": "healthy",
-    "rag": "healthy"
-  }
-}
-```
+### **2. API Documentation**
+Visit: `https://your-app.onrender.com/docs`
 
-### **2. Language Matching Test**
-
-#### **English Query → English Response**
+### **3. Test Translation**
 ```bash
-curl -X POST "https://your-app-name.onrender.com/api/v1/query" \
+curl -X POST "https://your-app.onrender.com/api/v1/translate/" \
   -H "Content-Type: application/json" \
-  -d '{
-    "text": "What are the symptoms of diabetes?",
-    "source_language": "en"
-  }'
+  -d '{"text": "Hello, how are you?", "source_language": "en", "target_language": "yo"}'
 ```
 
-**Expected Response:**
-```json
-{
-  "request_id": "550e8400-e29b-41d4-a716-446655440000",
-  "original_query": "What are the symptoms of diabetes?",
-  "source_language": "en",
-  "target_language": "en",
-  "translated_query": null,
-  "response": "The symptoms of diabetes include: 1) Increased thirst and frequent urination...",
-  "processing_time": 1.8,
-  "metadata": {
-    "rag_enabled": true,
-    "documents_retrieved": 3,
-    "model_used": "llama-3-8b-8192",
-    "translation_used": false
-  }
-}
-```
-
-#### **Yoruba Query → Yoruba Response**
+### **4. Test Medical Query**
 ```bash
-curl -X POST "https://your-app-name.onrender.com/api/v1/query" \
+curl -X POST "https://your-app.onrender.com/api/v1/query" \
   -H "Content-Type: application/json" \
-  -d '{
-    "text": "Kini awọn aami diabetes?",
-    "source_language": "yo"
-  }'
+  -d '{"text": "What are the symptoms of diabetes?"}'
 ```
 
-**Expected Response:**
-```json
-{
-  "request_id": "550e8400-e29b-41d4-a716-446655440001",
-  "original_query": "Kini awọn aami diabetes?",
-  "source_language": "yo",
-  "target_language": "yo",
-  "translated_query": null,
-  "response": "Awọn aami diabetes ni: 1) Igbẹ ti o pọ si ati igbẹ ti o ma n ṣe...",
-  "processing_time": 1.9,
-  "metadata": {
-    "rag_enabled": true,
-    "documents_retrieved": 3,
-    "model_used": "llama-3-8b-8192",
-    "translation_used": false
-  }
-}
-```
+## 🎯 **Success Indicators**
 
-### **3. Optional Translation Test**
-```bash
-curl -X POST "https://your-app-name.onrender.com/api/v1/query" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "text": "What are the symptoms of diabetes?",
-    "source_language": "en",
-    "target_language": "yo",
-    "translate_response": true
-  }'
-```
+✅ **Deployment Successful When:**
+- Build completes without errors
+- Health check returns 200
+- API documentation is accessible
+- Translation endpoint works
+- Medical query endpoint works
+- Yoruba characters display correctly
 
-**Expected Response:**
-```json
-{
-  "request_id": "550e8400-e29b-41d4-a716-446655440002",
-  "original_query": "What are the symptoms of diabetes?",
-  "source_language": "en",
-  "target_language": "yo",
-  "translated_query": "Kini awọn aami diabetes?",
-  "response": "Awọn aami diabetes ni: 1) Igbẹ ti o pọ si ati igbẹ ti o ma n ṣe...",
-  "processing_time": 2.2,
-  "metadata": {
-    "rag_enabled": true,
-    "documents_retrieved": 3,
-    "model_used": "llama-3-8b-8192",
-    "translation_used": true
-  }
-}
-```
+## 🔄 **Updates and Maintenance**
 
-## 📊 **Performance Monitoring**
+### **Updating the Application:**
+1. Push changes to GitHub
+2. Render will automatically redeploy (if auto-deploy is enabled)
+3. Monitor the deployment logs
+4. Test the endpoints after deployment
 
-### **1. Render Dashboard**
-- **Logs**: Real-time application logs
-- **Metrics**: Response times, errors, usage
-- **Health**: Service status and uptime
+### **Environment Variable Updates:**
+1. Go to your Render service dashboard
+2. Navigate to "Environment"
+3. Update the required variables
+4. Redeploy the service
 
-### **2. Application Metrics**
-```bash
-# Get application metrics
-curl https://your-app-name.onrender.com/metrics
+## 📞 **Support**
 
-# Get query statistics
-curl https://your-app-name.onrender.com/api/v1/query-stats
-```
+If you encounter issues:
+1. Check the Render deployment logs
+2. Verify all environment variables are set
+3. Test locally first to ensure code works
+4. Check the application logs for specific errors
 
-### **3. API Documentation**
-- **Swagger UI**: `https://your-app-name.onrender.com/docs`
-- **ReDoc**: `https://your-app-name.onrender.com/redoc`
+## 🎉 **Deployment Complete!**
 
-## 🔧 **Troubleshooting**
+Once deployed successfully, your HealthLang AI MVP will be available at:
+`https://your-app-name.onrender.com`
 
-### **Common Issues**
+**Key Features Available:**
+- ✅ Medical query processing with LLaMA-4 Maverick
+- ✅ Yoruba-English translation with proper encoding
+- ✅ Interactive API documentation
+- ✅ Health monitoring endpoints
+- ✅ Production-ready performance
 
-#### **1. Build Failures**
-```bash
-# Check requirements.txt
-pip install -r requirements.txt
+---
 
-# Verify Python version
-python --version  # Should be 3.11+
-```
-
-#### **2. API Key Issues**
-```bash
-# Verify environment variables in Render dashboard
-GROQ_API_KEY=your_actual_api_key_here
-```
-
-#### **3. Memory Issues**
-- **Upgrade to Professional plan** for more resources
-- **Reduce MAX_TOKENS** to 1024
-- **Disable RAG** temporarily: `RAG_ENABLED=false`
-
-#### **4. Slow Responses**
-- **Check Groq API status**: [status.groq.com](https://status.groq.com)
-- **Verify network connectivity**
-- **Monitor Render logs** for bottlenecks
-
-### **Debug Mode**
-```bash
-# Enable debug mode temporarily
-DEBUG=true
-LOG_LEVEL=DEBUG
-```
-
-## 📈 **Scaling Considerations**
-
-### **Starter Plan Limitations**
-- **512MB RAM**
-- **0.1 CPU cores**
-- **750 hours/month**
-- **Sleep after 15 minutes of inactivity**
-
-### **Professional Plan Benefits**
-- **2GB RAM**
-- **1 CPU core**
-- **Unlimited hours**
-- **Always on**
-- **Custom domains**
-
-### **When to Upgrade**
-- **Response times > 5 seconds**
-- **Memory usage > 80%**
-- **High error rates**
-- **Production traffic**
-
-## 🔒 **Security Best Practices**
-
-### **1. Environment Variables**
-- **Never commit API keys** to repository
-- **Use Render's secure environment variables**
-- **Rotate API keys regularly**
-
-### **2. CORS Configuration**
-```bash
-# For production, restrict CORS origins
-CORS_ORIGINS=["https://yourdomain.com", "https://app.yourdomain.com"]
-```
-
-### **3. Rate Limiting**
-- **Monitor rate limit usage**
-- **Adjust limits based on traffic**
-- **Implement user authentication if needed**
-
-## 🎯 **Production Checklist**
-
-- [ ] **API Keys configured**
-- [ ] **Health check passing**
-- [ ] **Language matching working**
-- [ ] **Optional translation working**
-- [ ] **Response times < 3 seconds**
-- [ ] **Error rate < 1%**
-- [ ] **Monitoring enabled**
-- [ ] **Backup API keys configured**
-- [ ] **CORS properly configured**
-- [ ] **Rate limits appropriate**
-
-## 🚀 **Next Steps**
-
-### **1. Custom Domain**
-- **Add custom domain** in Render dashboard
-- **Configure SSL certificate**
-- **Update CORS origins**
-
-### **2. Monitoring Setup**
-- **Set up alerts** for downtime
-- **Monitor response times**
-- **Track usage metrics**
-
-### **3. Performance Optimization**
-- **Enable caching** for frequently asked questions
-- **Optimize RAG retrieval**
-- **Fine-tune LLM parameters**
-
-Your HealthLang AI MVP is now deployed and optimized for fast, accurate responses with language-matching behavior! 🎉 
+**Happy Deploying! 🚀** 

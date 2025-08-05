@@ -57,13 +57,12 @@ PyPDF2>=3.0.1
 orjson>=3.9.10
 ujson>=5.8.0
 
-# LangGraph and workflow orchestration
-langgraph>=0.2.0
+# LangChain (simplified to avoid conflicts)
 langchain>=0.2.0
 langchain-core>=0.2.27
 
-# MCP (Model Context Protocol)
-mcp>=1.0.0
+# MCP (Model Context Protocol) - optional
+# mcp>=1.0.0
 
-# XAI Grok API client
-xai>=0.1.0 
+# XAI Grok API client - optional
+# xai>=0.1.0 
