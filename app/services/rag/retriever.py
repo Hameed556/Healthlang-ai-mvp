@@ -290,7 +290,7 @@ class RAGRetriever:
             for doc in documents:
                 # Calculate additional relevance scores
                 content_length_score = self._calculate_length_score(doc.document.content)
-                metadata_score = self._calculate_metadata_score(doc.document.metadata, query)
+                metadata_score = self._calculate_metadata_score(doc.document.document_metadata, query)
                 
                 # Combine scores (simple weighted average)
                 combined_score = (

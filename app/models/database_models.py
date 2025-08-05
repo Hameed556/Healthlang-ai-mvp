@@ -122,7 +122,7 @@ class Document(Base):
     source_url = Column(String(500), nullable=True)
     source_file = Column(String(255), nullable=True)
     language = Column(String(10), default="en", nullable=False)
-    metadata = Column(JSON, nullable=True)
+    document_metadata = Column(JSON, nullable=True)
     embedding_model = Column(String(100), nullable=True)
     vector_id = Column(String(255), nullable=True)  # ID in vector store
     is_processed = Column(Boolean, default=False, nullable=False)
@@ -152,7 +152,7 @@ class DocumentChunk(Base):
     chunk_index = Column(Integer, nullable=False)
     content = Column(Text, nullable=False)
     embedding = Column(JSON, nullable=True)  # Store embedding as JSON array
-    metadata = Column(JSON, nullable=True)
+    chunk_metadata = Column(JSON, nullable=True)
     vector_id = Column(String(255), nullable=True)  # ID in vector store
     similarity_score = Column(Float, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -175,7 +175,7 @@ class Collection(Base):
     id = Column(String(36), primary_key=True, default=generate_uuid)
     name = Column(String(100), unique=True, nullable=False, index=True)
     description = Column(Text, nullable=True)
-    metadata = Column(JSON, nullable=True)
+    collection_metadata = Column(JSON, nullable=True)
     document_count = Column(Integer, default=0, nullable=False)
     embedding_model = Column(String(100), nullable=True)
     vector_store_type = Column(String(50), nullable=True)
