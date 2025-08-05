@@ -10,6 +10,7 @@ requests>=2.31.0
 
 # Groq LLM client
 groq>=0.4.2
+langchain-groq>=0.1.0
 
 # Vector database and embeddings
 chromadb>=0.4.18
