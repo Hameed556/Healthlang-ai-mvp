@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     # Server Configuration
     HOST: str = Field(default="0.0.0.0", env="HOST")
     PORT: int = Field(default=8000, env="PORT")
-    WORKERS: int = Field(default=4, env="WORKERS")
+    WORKERS: int = Field(default=1, env="WORKERS")
     RELOAD: bool = Field(default=False, env="RELOAD")
     
     # API Keys and External Services
