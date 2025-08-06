@@ -41,7 +41,22 @@ EXPOSE 8000
 # Development command
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
-# Production stage
+# Testing stage
+FROM base as testing
+
+# Install testing dependencies
+RUN pip install --no-cache-dir pytest pytest-asyncio pytest-cov httpx
+
+# Copy source code
+COPY . .
+
+# Create necessary directories
+RUN mkdir -p /app/logs /app/data/medical_knowledge/embeddings
+
+# Run tests
+CMD ["pytest", "-v", "--cov=app", "--cov-report=html", "--cov-report=term"]
+
+# Production stage (now last)
 FROM base as production
 
 # Create non-root user
@@ -66,18 +81,3 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
 
 # Production command
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
-
-# Testing stage
-FROM base as testing
-
-# Install testing dependencies
-RUN pip install --no-cache-dir pytest pytest-asyncio pytest-cov httpx
-
-# Copy source code
-COPY . .
-
-# Create necessary directories
-RUN mkdir -p /app/logs /app/data/medical_knowledge/embeddings
-
-# Run tests
-CMD ["pytest", "-v", "--cov=app", "--cov-report=html", "--cov-report=term"] 
