@@ -37,7 +37,7 @@ service_status_gauge = Gauge(
 )
 
 
-@router.get("/")
+@router.get("")
 async def health_check(request: Request) -> Dict[str, Any]:
     """
     Basic health check endpoint
