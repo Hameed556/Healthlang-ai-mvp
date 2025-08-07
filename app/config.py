@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     
     # LLM Configuration
     LLM_PROVIDER: str = Field(default="groq", env="LLM_PROVIDER")
-    GROQ_MODEL: str = Field(default="llama-3-8b-8192", env="GROQ_MODEL")
+    GROQ_MODEL: str = Field(default="meta-llama/llama-4-maverick-17b-128e-instruct", env="GROQ_MODEL")
     OPENAI_MODEL: str = Field(default="gpt-3.5-turbo", env="OPENAI_MODEL")
     LOCAL_MODEL: str = Field(default="llama-3-8b", env="LOCAL_MODEL")
     LLM_TIMEOUT: int = Field(default=30, env="LLM_TIMEOUT")
