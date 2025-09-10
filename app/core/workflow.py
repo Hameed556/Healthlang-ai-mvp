@@ -16,13 +16,19 @@ from langchain_core.messages import HumanMessage, AIMessage
 from app.config import settings
 from app.utils.logger import get_logger
 
-# Conditional MCP import
-try:
-    from app.services.mcp import MCPClient
-    MCP_AVAILABLE = True
-except ImportError:
-    MCP_AVAILABLE = False
-    MCPClient = None
+
+from app.services.mcp_client_http import (
+    fda_drug_lookup,
+    pubmed_search,
+    health_topics,
+    clinical_trials_search,
+    medical_terminology_lookup,
+    medrxiv_search,
+    calculate_bmi,
+    ncbi_bookshelf_search,
+    extract_dicom_metadata,
+    usage_analytics,
+)
 
 logger = get_logger(__name__)
 
@@ -42,11 +48,9 @@ class WorkflowState(TypedDict):
 class HealthLangWorkflow:
     """Main workflow orchestrator for HealthLang AI"""
     
+
     def __init__(self):
-        if MCP_AVAILABLE and settings.MCP_ENABLED:
-            self.mcp_client = MCPClient()
-        else:
-            self.mcp_client = None
+        pass  # No MCP client instance needed for HTTP mode
         
     async def _detect_language(self, query: str) -> str:
         """Detect the language of the input query"""
@@ -196,13 +200,15 @@ Provide a detailed, accurate medical response. If you need to use any tools, spe
                 response.raise_for_status()
                 return response.json()["choices"][0]["message"]["content"]
         except httpx.HTTPStatusError as e:
-            logger.warning(f"XAI API returned status {e.response.status_code}, falling back to Groq")
+            logger.warning(f"XAI API returned status {e.response.status_code}, falling back to Groq+LLaMA model.")
             # Fallback to Groq API
-            return await self._call_groq_medical_reasoning(query, mcp_tools)
+            fallback_response = await self._call_groq_medical_reasoning(query, mcp_tools)
+            return f"[FALLBACK: Groq+LLaMA] {fallback_response}"
         except Exception as e:
-            logger.warning(f"XAI API failed, falling back to Groq: {e}")
+            logger.warning(f"XAI API failed, falling back to Groq+LLaMA: {e}")
             # Fallback to Groq API
-            return await self._call_groq_medical_reasoning(query, mcp_tools)
+            fallback_response = await self._call_groq_medical_reasoning(query, mcp_tools)
+            return f"[FALLBACK: Groq+LLaMA] {fallback_response}"
     
     async def _call_groq_medical_reasoning(self, query: str, mcp_tools: List[Dict]) -> str:
         """Fallback medical reasoning using Groq API"""
@@ -231,45 +237,62 @@ Provide a detailed, accurate medical response. If you need to use any tools, spe
             logger.error(f"Groq medical reasoning failed: {e}")
             return f"Sorry, I encountered an error while processing your medical query: {str(e)}"
     
+
     async def _get_mcp_tools(self) -> List[Dict]:
-        """Get available MCP tools"""
-        try:
-            if self.mcp_client and hasattr(self.mcp_client, 'is_connected') and self.mcp_client.is_connected():
-                return await self.mcp_client.list_tools()
-            else:
-                return []
-        except Exception as e:
-            logger.warning(f"Failed to get MCP tools: {e}")
-            return []
+        """Get available MCP tools (returns static list for now)"""
+        # You can call usage_analytics or document available tools here if needed
+        return [
+            {"name": "fda_drug_lookup", "description": "FDA Drug Lookup"},
+            {"name": "pubmed_search", "description": "PubMed Search"},
+            {"name": "health_topics", "description": "Health Topics"},
+            {"name": "clinical_trials_search", "description": "Clinical Trials Search"},
+            {"name": "medical_terminology_lookup", "description": "ICD-10/Medical Terminology Lookup"},
+            {"name": "medrxiv_search", "description": "medRxiv Search"},
+            {"name": "calculate_bmi", "description": "BMI Calculator"},
+            {"name": "ncbi_bookshelf_search", "description": "NCBI Bookshelf Search"},
+            {"name": "extract_dicom_metadata", "description": "Extract DICOM Metadata"},
+            {"name": "usage_analytics", "description": "Usage Analytics"},
+        ]
     
-    async def _call_mcp_tool(self, tool_name: str, arguments: str) -> str:
-        """Call an MCP tool"""
+
+    async def _call_mcp_tool(self, tool_name: str, arguments: dict) -> dict:
+        """Call an MCP tool via HTTP client"""
         try:
-            if self.mcp_client and hasattr(self.mcp_client, 'is_connected') and self.mcp_client.is_connected():
-                return await self.mcp_client.call_tool(tool_name, arguments)
+            if tool_name == "fda_drug_lookup":
+                return await fda_drug_lookup(**arguments)
+            elif tool_name == "pubmed_search":
+                return await pubmed_search(**arguments)
+            elif tool_name == "health_topics":
+                return await health_topics(**arguments)
+            elif tool_name == "clinical_trials_search":
+                return await clinical_trials_search(**arguments)
+            elif tool_name == "medical_terminology_lookup":
+                return await medical_terminology_lookup(**arguments)
+            elif tool_name == "medrxiv_search":
+                return await medrxiv_search(**arguments)
+            elif tool_name == "calculate_bmi":
+                return await calculate_bmi(**arguments)
+            elif tool_name == "ncbi_bookshelf_search":
+                return await ncbi_bookshelf_search(**arguments)
+            elif tool_name == "extract_dicom_metadata":
+                return await extract_dicom_metadata(**arguments)
+            elif tool_name == "usage_analytics":
+                return await usage_analytics(**arguments)
             else:
-                return f"Tool {tool_name} not available (MCP not connected)"
+                return {"status": "error", "error_message": f"Tool {tool_name} not available"}
         except Exception as e:
             logger.error(f"MCP tool call failed: {e}")
-            return f"Error calling tool {tool_name}: {str(e)}"
+            return {"status": "error", "error_message": str(e)}
     
+
     async def initialize(self) -> None:
-        """Initialize the workflow"""
-        try:
-            logger.info("Initializing HealthLang workflow...")
-            if self.mcp_client:
-                await self.mcp_client.initialize()
-            logger.info("HealthLang workflow initialized successfully")
-        except Exception as e:
-            logger.warning(f"Workflow initialization failed (continuing without MCP): {e}")
+        """Initialize the workflow (no MCP client needed for HTTP mode)"""
+        logger.info("HealthLang workflow initialized successfully (MCP HTTP mode)")
     
+
     async def cleanup(self) -> None:
-        """Cleanup resources"""
-        try:
-            if self.mcp_client:
-                await self.mcp_client.cleanup()
-        except Exception as e:
-            logger.error(f"Workflow cleanup failed: {e}")
+        """Cleanup resources (no MCP client needed for HTTP mode)"""
+        pass
     
     async def process_query(self, query: str) -> Dict[str, Any]:
         """Process a medical query through the complete workflow"""

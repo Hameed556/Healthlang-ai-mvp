@@ -1,3 +1,17 @@
+from app.services.mcp_client_http import mcp_get
+from fastapi import APIRouter
+from typing import Dict, Any
+router = APIRouter()
+@router.get("/mcp-health")
+async def mcp_health_check() -> Dict[str, Any]:
+    """
+    Health check for MCP server
+    """
+    try:
+        data = await mcp_get("/health")
+        return {"status": "ok", "mcp": data}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
 """
 Health check endpoints for HealthLang AI MVP
 """
@@ -37,7 +51,7 @@ service_status_gauge = Gauge(
 )
 
 
-@router.get("")
+@router.get("/")
 async def health_check(request: Request) -> Dict[str, Any]:
     """
     Basic health check endpoint
@@ -94,9 +108,12 @@ async def detailed_health_check(request: Request) -> Dict[str, Any]:
     start_time = datetime.now()
     
     try:
-        # Get global service instances from main app
-        from app.main import translation_service, llm_client, vector_store
-        
+        # Access global services via FastAPI app state
+        app = request.app
+        translation_service = getattr(app.state, "translation_service", None)
+        llm_client = getattr(app.state, "llm_client", None)
+        vector_store = getattr(app.state, "vector_store", None)
+
         health_status = {
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
@@ -106,7 +123,7 @@ async def detailed_health_check(request: Request) -> Dict[str, Any]:
             "services": {},
             "uptime": 0,  # Placeholder for uptime
         }
-        
+
         # Check translation service
         if translation_service:
             try:
@@ -125,7 +142,7 @@ async def detailed_health_check(request: Request) -> Dict[str, Any]:
         else:
             health_status["services"]["translation"] = {"status": "not_initialized"}
             service_status_gauge.labels(service="translation").set(0)
-        
+
         # Check LLM client
         if llm_client:
             try:
@@ -226,13 +243,17 @@ async def readiness_check(request: Request) -> Dict[str, Any]:
     """
     start_time = datetime.now()
     
+
     try:
-        # Check if all critical services are ready
-        from app.main import translation_service, llm_client, vector_store
-        
+        # Access global services via FastAPI app state
+        app = request.app
+        translation_service = getattr(app.state, "translation_service", None)
+        llm_client = getattr(app.state, "llm_client", None)
+        vector_store = getattr(app.state, "vector_store", None)
+
         ready_services = []
         not_ready_services = []
-        
+
         # Check translation service
         if translation_service:
             try:
@@ -245,7 +266,7 @@ async def readiness_check(request: Request) -> Dict[str, Any]:
                 not_ready_services.append("translation")
         else:
             not_ready_services.append("translation")
-        
+
         # Check LLM client
         if llm_client:
             try:
@@ -258,24 +279,33 @@ async def readiness_check(request: Request) -> Dict[str, Any]:
                 not_ready_services.append("llm")
         else:
             not_ready_services.append("llm")
-        
+
         # Check vector store
         if vector_store:
             try:
                 health = await vector_store.health_check()
-                if health.get("status") == "healthy":
+                logger.info(f"[Readiness] Vector store health check result: {health}")
+                # Treat dummy backend as ready
+                if health.get("status") == "healthy" and (health.get("store_type") == "dummy" or health.get("store_type") == "chroma" or health.get("store_type") == "ephemeral"):
+                    logger.info("[Readiness] Vector store marked as ready (dummy/chroma/ephemeral backend)")
+                    ready_services.append("vector_store")
+                elif health.get("status") == "healthy":
+                    logger.info("[Readiness] Vector store marked as ready (other backend)")
                     ready_services.append("vector_store")
                 else:
+                    logger.info("[Readiness] Vector store marked as not ready")
                     not_ready_services.append("vector_store")
-            except Exception:
+            except Exception as e:
+                logger.error(f"[Readiness] Exception during vector store health check: {e}")
                 not_ready_services.append("vector_store")
         else:
+            logger.info("[Readiness] Vector store not initialized, marked as not ready")
             not_ready_services.append("vector_store")
-        
+
         # Determine readiness
         is_ready = len(not_ready_services) == 0
         status_str = "ready" if is_ready else "not_ready"
-        
+
         readiness_status = {
             "status": status_str,
             "timestamp": datetime.now().isoformat(),
@@ -283,16 +313,16 @@ async def readiness_check(request: Request) -> Dict[str, Any]:
             "not_ready_services": not_ready_services,
             "request_id": getattr(request.state, "request_id", None),
         }
-        
+
         # Record metrics
         health_check_counter.labels(endpoint="readiness", status=status_str).inc()
-        
+
         return readiness_status
-        
+
     except Exception as e:
         logger.error(f"Readiness check failed: {e}")
         health_check_counter.labels(endpoint="readiness", status="error").inc()
-        
+
         return {
             "status": "not_ready",
             "error": str(e),

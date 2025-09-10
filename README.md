@@ -1,6 +1,7 @@
+
 # HealthLang AI MVP
 
-A bilingual (Yoruba-English) medical Q&A system powered by LLaMA-4 Maverick via Groq API with comprehensive medical reasoning and translation capabilities.
+A bilingual (Yoruba-English) medical Q&A system powered by LLaMA-4 Maverick via Groq API, with medical reasoning and translation now integrated via a robust MCP HTTP server.
 
 ## 🚀 Features
 
@@ -27,23 +28,25 @@ Response Generation & Translation
 Formatted Medical Answer (Yoruba)
 ```
 
+
 ## 🛠️ Tech Stack
 
 - **Backend**: FastAPI, Python 3.11+
 - **LLM**: LLaMA-4 Maverick 17B via Groq API
-- **Translation**: LLaMA-4 Maverick 17B for Yoruba-English
-- **Medical Reasoning**: LLaMA-4 Maverick 17B with fallback mechanisms
+- **Medical Reasoning & Tools**: MCP Node.js server (HTTP endpoints)
+- **Translation**: MCP HTTP endpoints (Yoruba-English)
 - **Deployment**: Docker, Kubernetes ready
 - **Monitoring**: Prometheus metrics, comprehensive logging
 - **Documentation**: Auto-generated OpenAPI/Swagger
 
 ## 📦 Quick Start
 
+
 ### Prerequisites
 
 - Python 3.11+
 - Groq API key
-- X.AI API key (optional, with Groq fallback)
+- MCP Node.js server (see MCP documentation)
 
 ### Installation
 
@@ -53,34 +56,43 @@ Formatted Medical Answer (Yoruba)
    cd healthlang-ai-mvp
    ```
 
+
 2. **Set up environment**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your API keys:
-   # GROQ_API_KEY=your_groq_api_key
-   # XAI_GROK_API_KEY=your_xai_api_key (optional)
-   ```
+    ```bash
+    cp .env.example .env
+    # Edit .env with your API keys and MCP server config:
+    # GROQ_API_KEY=your_groq_api_key
+    # MCP_BASE_URL=https://healthcare-mcp.onrender.com
+    # MCP_API_KEY=your_mcp_api_key (if required)
+    ```
 
 3. **Install dependencies**
    ```bash
    pip install -r requirements.txt
    ```
 
+
 4. **Run the application**
-   ```bash
-   # Development
-   python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --log-level info
-   
-   # Production with Docker
-   docker-compose up -d
-   ```
+    ```bash
+    # Start MCP server (must be running for medical reasoning and translation)
+    node mcp_servers/healthcare_server.js
+
+    # Development
+    python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --log-level info
+
+    # Production with Docker
+    docker-compose up -d
+    ```
+
 
 ## 📚 API Documentation
 
-Once running, visit:
+Once running (with MCP server active), visit:
 - **Interactive API Docs**: http://localhost:8000/docs
 - **Health Check**: http://localhost:8000/health
+- **MCP Health Check**: http://localhost:8000/mcp-health
 - **Metrics**: http://localhost:8000/metrics
+
 
 ### Example Usage
 
@@ -91,7 +103,6 @@ import requests
 response = requests.post("http://localhost:8000/api/v1/query", json={
     "text": "What are the symptoms of diabetes?"
 })
-
 result = response.json()
 print(f"Response: {result['response']}")
 print(f"Processing Time: {result['processing_time']}s")
@@ -102,48 +113,48 @@ response = requests.post("http://localhost:8000/api/v1/translate/", json={
     "source_language": "en",
     "target_language": "yo"
 })
-
 result = response.json()
-print(f"Translated: {result['translated_text']}")  # "Ẹ n lẹ, bawo ni?"
+print(f"Translated: {result['translated_text']}")
 
 # Language detection
 response = requests.post("http://localhost:8000/api/v1/translate/detect-language", json={
     "text": "Bawo ni o"
 })
-
 result = response.json()
-print(f"Detected Language: {result['detected_language']}")  # "yo"
+print(f"Detected Language: {result['detected_language']}")
 ```
+
 
 ### cURL Examples
 
 ```bash
 # Medical query
 curl -X POST "http://localhost:8000/api/v1/query" \
-  -H "Content-Type: application/json" \
-  -d '{"text": "What are the symptoms of diabetes?"}'
+    -H "Content-Type: application/json" \
+    -d '{"text": "What are the symptoms of diabetes?"}'
 
 # Translation
 curl -X POST "http://localhost:8000/api/v1/translate/" \
-  -H "Content-Type: application/json" \
-  -d '{"text": "Hello, how are you?", "source_language": "en", "target_language": "yo"}'
+    -H "Content-Type: application/json" \
+    -d '{"text": "Hello, how are you?", "source_language": "en", "target_language": "yo"}'
 
 # Language detection
 curl -X POST "http://localhost:8000/api/v1/translate/detect-language" \
-  -H "Content-Type: application/json" \
-  -d '{"text": "Bawo ni o"}'
+    -H "Content-Type: application/json" \
+    -d '{"text": "Bawo ni o"}'
 ```
 
 ## 🎯 Key Features
 
+
 ### ✅ **Working Features:**
-- **Medical Query Processing**: Full pipeline with LLaMA-4 Maverick
-- **Bidirectional Translation**: English ↔ Yoruba with proper encoding
-- **Language Detection**: Automatic language detection
+- **Medical Query Processing**: Full pipeline with MCP HTTP server and LLaMA-4 Maverick
+- **Bidirectional Translation**: English ↔ Yoruba via MCP HTTP endpoints
+- **Language Detection**: Automatic via MCP HTTP endpoints
 - **Error Handling**: Graceful fallbacks and comprehensive error messages
 - **UTF-8 Encoding**: Proper Yoruba character support (ẹ, ọ, ṣ, etc.)
 - **API Documentation**: Interactive Swagger UI at `/docs`
-- **Health Monitoring**: Comprehensive health checks
+- **Health Monitoring**: Comprehensive health checks, including MCP server
 - **Metrics**: Prometheus metrics for monitoring
 
 ### 🔧 **Technical Stack:**

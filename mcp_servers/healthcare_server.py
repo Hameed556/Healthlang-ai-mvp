@@ -24,6 +24,8 @@ from mcp.types import (
     TextContent,
 )
 
+notification_options = None
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -350,8 +352,9 @@ async def main():
             InitializationOptions(
                 server_name="healthcare-server",
                 server_version="1.0.0",
+                
                 capabilities=server.get_capabilities(
-                    notification_options=None,
+                    notification_options=notification_options,
                     experimental_capabilities=None,
                 ),
             ),

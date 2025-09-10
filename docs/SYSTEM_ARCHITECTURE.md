@@ -390,17 +390,17 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ### **2. Access the API**
 ```bash
 # Health check
-curl http://localhost:8000/health
+curl https://healthcare-mcp.onrender.com/health
 
 # Medical query
-curl -X POST "http://localhost:8000/api/v1/query" \
+curl -X POST "https://healthcare-mcp.onrender.com/api/v1/query" \
   -H "Content-Type: application/json" \
   -d '{"text": "What are the symptoms of diabetes?", "source_language": "en", "target_language": "yo"}'
 ```
 
 ### **3. View Documentation**
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
+- **Swagger UI**: https://healthcare-mcp.onrender.com/docs
+- **ReDoc**: https://healthcare-mcp.onrender.com/redoc
 
 ## 🔮 **System Benefits**
 

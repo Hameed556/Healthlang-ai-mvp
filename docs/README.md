@@ -42,6 +42,6 @@ make docs-dev
 
 ## Viewing Documentation
 
-- API docs: `http://localhost:8000/docs`
-- User docs: `http://localhost:8000/docs/user`
-- Developer docs: `http://localhost:8000/docs/dev` 
+- API docs: `https://healthcare-mcp.onrender.com/docs`
+- User docs: `https://healthcare-mcp.onrender.com/docs/user`
+- Developer docs: `https://healthcare-mcp.onrender.com/docs/dev` 

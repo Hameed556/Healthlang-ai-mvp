@@ -119,7 +119,7 @@
 #### **API Usability**
 - **Before**: Missing endpoints and documentation
 - **After**: Complete API with interactive documentation
-- **Access**: http://localhost:8000/docs ✅
+- **Access**: https://healthcare-mcp.onrender.com/docs ✅
 
 ### 🔮 **Future Enhancements**
 
@@ -136,8 +136,8 @@
 The system is now **fully functional** and ready for production use:
 
 1. **Setup**: Configure API keys in `.env`
-2. **Run**: `python -m uvicorn app.main:app --host 127.0.0.1 --port 8000`
-3. **Test**: Visit http://localhost:8000/docs
+2. **Run**: `python -m uvicorn app.main:app --host 0.0.0.0 --port 8000`
+3. **Test**: Visit https://healthcare-mcp.onrender.com/docs
 4. **Integrate**: Use the comprehensive API documentation
 
 ### 📝 **Breaking Changes**

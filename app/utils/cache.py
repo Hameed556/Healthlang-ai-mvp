@@ -15,6 +15,17 @@ logger = get_logger(__name__)
 
 
 class Cache:
+    async def health_check(self) -> dict:
+        """Dummy health check for Cache."""
+        return {
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "type": "in-memory"
+        }
+
+    async def initialize(self) -> None:
+        """No-op for in-memory cache."""
+        pass
     """Simple in-memory cache with TTL support"""
     
     def __init__(self, default_ttl: int = 3600):

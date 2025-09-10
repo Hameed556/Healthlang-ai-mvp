@@ -10,7 +10,7 @@ from fastapi import APIRouter, Request, HTTPException, Depends
 from pydantic import BaseModel, Field, field_validator
 
 from app.services.translation.translator import TranslationService
-from app.core.exceptions import HealthLangException, LanguageNotSupportedError
+
 from app.utils.logger import get_logger
 from app.utils.validators import validate_language_code
 
@@ -230,32 +230,27 @@ async def translate_text(
     
     try:
         logger.info(f"Translating text (ID: {request_id}): {request.text[:100]}...")
-        
-        # Perform translation
+
+        # Use Groq+LLaMA-4 Maverick for translation
         translated_text = await service.translate(
-            text=request.text,
+            request.text,
             source_language=request.source_language,
-            target_language=request.target_language,
+            target_language=request.target_language
         )
-        
-        # Calculate processing time
+
         processing_time = (datetime.now() - start_time).total_seconds()
-        
-        # Record success metrics
         translation_counter.labels(
             source_language=request.source_language,
             target_language=request.target_language,
             status="success"
         ).inc()
-        
-        # Build response
         response = TranslationResponse(
             request_id=request_id,
             original_text=request.text,
             translated_text=translated_text,
             source_language=request.source_language,
             target_language=request.target_language,
-            confidence_score=0.95,  # Placeholder - would come from translation service
+            confidence_score=0.95,
             processing_time=processing_time,
             timestamp=datetime.now().isoformat(),
             metadata={
@@ -264,74 +259,28 @@ async def translate_text(
                 "translated_length": len(translated_text),
             },
         )
-        
-        logger.info(f"Translation completed successfully (ID: {request_id})")
-        
-        # Add proper encoding headers for Yoruba characters
+        logger.info(f"Translation completed (ID: {request_id})")
         from fastapi.responses import JSONResponse
         return JSONResponse(
             content=response.model_dump(),
             headers={"Content-Type": "application/json; charset=utf-8"}
         )
-        
-    except LanguageNotSupportedError as e:
-        # Record error metrics
-        translation_counter.labels(
-            source_language=request.source_language,
-            target_language=request.target_language,
-            status="error"
-        ).inc()
-        
-        logger.error(f"Language not supported (ID: {request_id}): {e.message}")
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "error": e.message,
-                "error_code": e.error_code,
-                "request_id": request_id,
-                "supported_languages": e.details.get("supported_languages", []),
-            }
-        )
-        
-    except HealthLangException as e:
-        # Record error metrics
-        translation_counter.labels(
-            source_language=request.source_language,
-            target_language=request.target_language,
-            status="error"
-        ).inc()
-        
-        logger.error(f"Translation error (ID: {request_id}): {e.message}")
-        raise HTTPException(
-            status_code=e.status_code,
-            detail={
-                "error": e.message,
-                "error_code": e.error_code,
-                "request_id": request_id,
-                "details": e.details,
-            }
-        )
-        
     except Exception as e:
-        # Record error metrics
         translation_counter.labels(
             source_language=request.source_language,
             target_language=request.target_language,
             status="error"
         ).inc()
-        
-        logger.error(f"Unexpected translation error (ID: {request_id}): {e}", exc_info=True)
+        logger.error(f"Translation error (ID: {request_id}): {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail={
-                "error": "Internal server error during translation",
+                "error": str(e),
                 "error_code": "INTERNAL_ERROR",
                 "request_id": request_id,
             }
         )
-        
     finally:
-        # Record duration metrics
         duration = (datetime.now() - start_time).total_seconds()
         translation_duration.labels(
             source_language=request.source_language,
@@ -368,24 +317,22 @@ async def translate_batch(
     
     translations = []
     errors = []
-    
+
     for i, text in enumerate(request.texts):
         try:
             translated_text = await service.translate(
-                text=text,
+                text,
                 source_language=request.source_language,
-                target_language=request.target_language,
+                target_language=request.target_language
             )
-            
             translations.append({
                 "index": i,
                 "original_text": text,
                 "translated_text": translated_text,
                 "source_language": request.source_language,
                 "target_language": request.target_language,
-                "confidence_score": 0.95,  # Placeholder
+                "confidence_score": 0.95,
             })
-            
         except Exception as e:
             logger.error(f"Error translating batch item {i+1} (ID: {batch_id}): {e}")
             errors.append({
@@ -393,9 +340,9 @@ async def translate_batch(
                 "original_text": text,
                 "error": str(e),
             })
-    
+
     processing_time = (datetime.now() - start_time).total_seconds()
-    
+
     return BatchTranslationResponse(
         batch_id=batch_id,
         total_texts=len(request.texts),

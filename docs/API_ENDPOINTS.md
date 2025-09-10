@@ -4,7 +4,7 @@ This document provides comprehensive API documentation for the HealthLang AI MVP
 
 ## 🚀 **Base URL**
 ```
-http://localhost:8000
+https://healthcare-mcp.onrender.com
 ```
 
 ## 📚 **API Overview**
@@ -80,7 +80,7 @@ Process a medical query with translation and RAG (Retrieval-Augmented Generation
 
 **cURL Example:**
 ```bash
-curl -X POST "http://localhost:8000/api/v1/query" \
+curl -X POST "https://healthcare-mcp.onrender.com/api/v1/query" \
   -H "Content-Type: application/json" \
   -d '{
     "text": "What are the symptoms of diabetes?"
@@ -312,7 +312,7 @@ import requests
 
 # Medical query
 response = requests.post(
-    "http://localhost:8000/api/v1/query",
+  "https://healthcare-mcp.onrender.com/api/v1/query",
     json={
         "text": "What are the symptoms of diabetes?"
     }
@@ -324,7 +324,7 @@ print(f"Processing Time: {result['processing_time']}s")
 
 # Translation
 response = requests.post(
-    "http://localhost:8000/api/v1/translate/",
+  "https://healthcare-mcp.onrender.com/api/v1/translate/",
     json={
         "text": "Hello, how are you?",
         "source_language": "en",
@@ -339,7 +339,7 @@ print(f"Translated: {result['translated_text']}")
 ### **JavaScript Example:**
 ```javascript
 // Medical query
-const response = await fetch('http://localhost:8000/api/v1/query', {
+const response = await fetch('https://healthcare-mcp.onrender.com/api/v1/query', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -354,7 +354,7 @@ console.log('Response:', result.response);
 console.log('Processing Time:', result.processing_time);
 
 // Translation
-const translationResponse = await fetch('http://localhost:8000/api/v1/translate/', {
+const translationResponse = await fetch('https://healthcare-mcp.onrender.com/api/v1/translate/', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -373,20 +373,20 @@ console.log('Translated:', translationResult.translated_text);
 ### **cURL Examples:**
 ```bash
 # Health check
-curl http://localhost:8000/health
+curl https://healthcare-mcp.onrender.com/health
 
 # Medical query
-curl -X POST "http://localhost:8000/api/v1/query" \
+curl -X POST "https://healthcare-mcp.onrender.com/api/v1/query" \
   -H "Content-Type: application/json" \
   -d '{"text": "What are the symptoms of diabetes?"}'
 
 # Translation
-curl -X POST "http://localhost:8000/api/v1/translate/" \
+curl -X POST "https://healthcare-mcp.onrender.com/api/v1/translate/" \
   -H "Content-Type: application/json" \
   -d '{"text": "Hello, how are you?", "source_language": "en", "target_language": "yo"}'
 
 # Language detection
-curl -X POST "http://localhost:8000/api/v1/translate/detect-language" \
+curl -X POST "https://healthcare-mcp.onrender.com/api/v1/translate/detect-language" \
   -H "Content-Type: application/json" \
   -d '{"text": "Bawo ni o"}'
 ```

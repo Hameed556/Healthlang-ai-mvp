@@ -12,7 +12,7 @@ from prometheus_client import Counter, Histogram, Gauge
 
 from app.config import settings
 from app.core.workflow import HealthLangWorkflow
-from app.core.exceptions import HealthLangException
+
 from app.utils.logger import get_logger
 from app.utils.metrics import record_query_metrics
 
@@ -131,18 +131,16 @@ async def process_medical_query(
     
     try:
         logger.info(f"Processing medical query (ID: {request_id}): {request.text[:100]}...")
-        
-        # Process the query through the LangGraph workflow
+
+        # Use workflow to process query (which now uses MCP HTTP client)
         result = await workflow.process_query(request.text)
-        
-        # Record success metrics
+
         query_counter.labels(
             source_language="auto",
             target_language="auto",
-            status="success"
+            status="success" if result["success"] else "error"
         ).inc()
-        
-        # Build response
+
         response = MedicalQueryResponse(
             request_id=request_id,
             original_query=request.text,
@@ -153,70 +151,43 @@ async def process_medical_query(
             success=result["success"],
             error=result.get("error")
         )
-        
-        logger.info(f"Query processed successfully (ID: {request_id})")
-        
-        # Add proper encoding headers for Yoruba characters
+
+        logger.info(f"Query processed (ID: {request_id}) - Success: {result['success']}")
+
         from fastapi.responses import JSONResponse
         return JSONResponse(
             content=response.model_dump(),
             headers={"Content-Type": "application/json; charset=utf-8"}
         )
-        
-    except HealthLangException as e:
-        # Record error metrics
-        query_counter.labels(
-            source_language="auto",
-            target_language="auto",
-            status="error"
-        ).inc()
-        
-        logger.error(f"HealthLang error processing query (ID: {request_id}): {e.message}")
-        raise HTTPException(
-            status_code=e.status_code,
-            detail={
-                "error": e.message,
-                "error_code": e.error_code,
-                "request_id": request_id,
-                "details": e.details,
-            }
-        )
-        
+
     except Exception as e:
-        # Record error metrics
         query_counter.labels(
             source_language="auto",
             target_language="auto",
             status="error"
         ).inc()
-        
-        logger.error(f"Unexpected error processing query (ID: {request_id}): {e}", exc_info=True)
+        logger.error(f"Error processing query (ID: {request_id}): {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail={
-                "error": "Internal server error",
+                "error": str(e),
                 "error_code": "INTERNAL_ERROR",
                 "request_id": request_id,
             }
         )
-        
     finally:
-        # Record duration metrics
         duration = (datetime.now() - start_time).total_seconds()
         query_duration.labels(
             source_language="auto",
             target_language="auto"
         ).observe(duration)
-        
         active_queries.dec()
-        
-        # Record additional metrics
         await record_query_metrics(
             request_id=request_id,
             source_language="auto",
             target_language="auto",
             duration=duration,
-            success=True,  # Will be False if exception was raised
+            success=True,
         )
 
 

@@ -34,28 +34,41 @@ workflow: HealthLangWorkflow = None
 async def lifespan(app: FastAPI):
     """Application lifespan manager"""
     global workflow
-    
+
     logger.info("Starting HealthLang AI MVP application...")
-    
+
+
     try:
         # Initialize workflow
         logger.info("Initializing HealthLang workflow...")
         workflow = HealthLangWorkflow()
         await workflow.initialize()
-        
+
+        # Expose global services on app.state for health endpoints
+        from app.services.translation.translator import TranslationService
+        from app.services.medical.llm_client import LLMClient
+        from app.services.rag.vector_store import VectorStore
+        app.state.translation_service = TranslationService()
+        await app.state.translation_service.initialize()
+        app.state.llm_client = LLMClient()
+        app.state.vector_store = VectorStore()
+
         logger.info("Workflow initialized successfully")
-        
+
         yield
-        
+
     except Exception as e:
         logger.error(f"Error during startup: {e}")
         raise
     finally:
         logger.info("Shutting down HealthLang AI MVP application...")
-        
+
         # Cleanup workflow
         if workflow:
             await workflow.cleanup()
+        # Cleanup translation service
+        if hasattr(app.state, "translation_service"):
+            await app.state.translation_service.cleanup()
 
 
 # Create FastAPI application
@@ -113,7 +126,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # Include routers
-app.include_router(health.router, prefix="/health", tags=["health"])
+app.include_router(health.router, prefix="", tags=["health"])
 app.include_router(query.router, prefix="/api/v1", tags=["query"])
 app.include_router(translation.router, prefix="/api/v1/translate", tags=["translation"])
 

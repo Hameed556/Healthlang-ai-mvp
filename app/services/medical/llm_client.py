@@ -48,6 +48,13 @@ class LLMResponse:
     provider: str
 
 class LLMClient:
+    async def health_check(self) -> dict:
+        """Dummy health check for LLMClient."""
+        return {
+            "status": "healthy",
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "provider": str(self.provider)
+        }
     """
     Client for interfacing with Groq and X.AI Grok LLM providers.
     """

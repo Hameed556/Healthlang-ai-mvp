@@ -127,7 +127,7 @@ def test_health_check_cors_headers(client: TestClient):
         headers = response.headers
         # Check for CORS headers if implemented
         if "access-control-allow-origin" in headers:
-            assert headers["access-control-allow-origin"] in ["*", "http://localhost:3000"]
+            assert headers["access-control-allow-origin"] in ["*", "https://healthcare-mcp.onrender.com"]
 
 
 def test_health_check_performance(client: TestClient):

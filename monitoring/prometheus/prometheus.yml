@@ -7,4 +7,4 @@ scrape_configs:
       - targets: ['healthlang-app:8000']
   - job_name: 'prometheus'
     static_configs:
-      - targets: ['localhost:9090'] 
+  - targets: ['healthcare-mcp.onrender.com:9090'] 
