@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 from prometheus_client import Counter, Histogram, Gauge, Summary
 from app.utils.logger import get_logger
+from app.config import settings
 
 logger = get_logger(__name__)
 
@@ -174,12 +175,12 @@ async def record_pipeline_metrics(metrics: PipelineMetrics) -> None:
         if metrics.llm_duration is not None:
             llm_requests_total.labels(
                 status=status,
-                model="llama-3-8b-8192",  # From settings
+                model=settings.MEDICAL_MODEL_NAME,  # From settings
                 provider="groq"
             ).inc()
             
             llm_duration_seconds.labels(
-                model="llama-3-8b-8192",
+                model=settings.MEDICAL_MODEL_NAME,
                 provider="groq"
             ).observe(metrics.llm_duration)
         
