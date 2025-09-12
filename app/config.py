@@ -87,8 +87,8 @@ class Settings(BaseSettings):
     SECRET_KEY: str = Field(default="your_secret_key_here_change_in_production", env="SECRET_KEY")
     ALGORITHM: str = Field(default="HS256", env="ALGORITHM")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=30, env="ACCESS_TOKEN_EXPIRE_MINUTES")
-    CORS_ORIGINS: str = Field(default="http://localhost:3000,http://localhost:8000", env="CORS_ORIGINS")
-    
+    CORS_ORIGINS: str = Field(default="http://localhost:3000,http://localhost:8000,https://lang-heal-chat.vercel.app", env="CORS_ORIGINS")
+
     @field_validator("CORS_ORIGINS")
     @classmethod
     def parse_cors_origins(cls, v):
