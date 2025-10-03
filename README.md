@@ -1,13 +1,38 @@
 
 # HealthLang AI MVP
 
-An English-first, safety-forward medical assistant built with FastAPI that consults an MCP server and optional RAG to provide concise, cited guidance. It defaults to English and can respond in Nigerian Pidgin on explicit request. Powered by configurable LLM providers (Groq primary by default, X.AI optional).
+An English-first, safety-forward medical assistant built with FastAPI that consults an MCP serv## 🌐 Real-time Knowledge with Tavily
+
+The system integrates Tavily Search API for real-time general knowledge queries, ensuring current and accurate information:
+
+**Key Features:**
+- **Current Information**: Access to real-time data for questions about current events, leadership, recent developments
+- **General Knowledge**: Complements medical expertise with broader knowledge base
+- **Reliable Sources**: Search results from authoritative websites with proper citations
+- **Automatic Detection**: System automatically determines when to use Tavily vs. medical sources
+- **ChromaDB Caching**: Results cached locally for improved performance
+
+**When Tavily is Used:**
+- General knowledge questions ("Who's the president?", "What's the latest news about...")
+- Current events and recent developments
+- Non-medical factual queries that benefit from real-time information
+- Questions where the LLM's training data might be outdated
+
+**Configuration:**
+- `TAVILY_API_KEY` - Your Tavily Search API key (required for real-time features)
+- Automatically integrates with existing RAG workflow
+- Uses advanced search depth for higher quality results (2 API credits per query)
+
+## 🏗️ MCP Integration
+
+The system uses an HTTP-based MCP (Model Context Protocol) client to fetch external medical context:and optional RAG with real-time knowledge via Tavily Search to provide concise, cited guidance. It defaults to English and can respond in Nigerian Pidgin on explicit request. Powered by configurable LLM providers (Groq primary by default, X.AI optional).
 
 ## 🚀 Features
 
 - **English-first Chat**: All user inputs and chatbot responses are handled in English by default
 - **Provider-flexible LLM**: Configurable primary provider (Groq by default with meta-llama/llama-4-maverick-17b-128e-instruct; X.AI as optional alternative)
-- **Hybrid Context**: Optional RAG + external MCP tools (health topics, PubMed, clinical trials, etc.)
+- **Hybrid Context**: Optional RAG + external MCP tools (health topics, PubMed, clinical trials, etc.) + real-time knowledge via Tavily Search
+- **Real-time Knowledge**: Tavily Search API integration for current information and general knowledge queries
 - **MCP Integration**: HTTP client with robust error handling; graceful fallbacks when MCP unavailable
 - **Friendly Medical Persona**: Safety guardrails, "My take" opinions, Nigerian Pidgin only on explicit request
 - **Neat Sources**: Compact citations from PubMed/MCP/RAG with structured metadata
@@ -23,7 +48,10 @@ User Query (English)
     ↓
 Medical Reasoning (LLaMA-4 Maverick)
     ↓
-Optional MCP/RAG Context
+Optional Context Sources:
+  • MCP Tools (PubMed, health topics, etc.)
+  • RAG System (medical knowledge base)
+  • Tavily Search (real-time general knowledge)
     ↓
 Response Generation & Post-processing (opinion, citations, contextual follow-up)
     ↓
@@ -36,6 +64,8 @@ Formatted Medical Answer (English)
 - **Backend**: FastAPI, Python 3.11+
 - **LLM**: LLaMA-4 Maverick 17B via X.AI Grok (primary) and Groq (fallback)
 - **Medical Reasoning & Tools**: MCP HTTP server (remote by default; sample local Python server included)
+- **Real-time Knowledge**: Tavily Search API with LangChain integration
+- **RAG System**: ChromaDB + SentenceTransformers for document retrieval
 - **Translation**: Endpoints available but not used by the chat flow (reserved for TTS/STT)
 - **Deployment**: Docker, Kubernetes ready
 - **Monitoring**: Prometheus metrics, comprehensive logging
@@ -49,6 +79,7 @@ Formatted Medical Answer (English)
 - Python 3.11+
 - X.AI (Grok) API key (recommended for primary model)
 - Groq API key (used as fallback)
+- Tavily API key (for real-time knowledge search)
 - MCP HTTP server (remote default: https://healthcare-mcp.onrender.com). A sample local Python server is available in `mcp_servers/healthcare_server.py`.
 
 ### Installation
@@ -88,6 +119,9 @@ Formatted Medical Answer (English)
             RAG_ENABLED=true
             CHROMA_PERSIST_DIRECTORY=./data/chroma
             EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+            
+            # Tavily Real-time Knowledge
+            TAVILY_API_KEY=your_tavily_api_key
             
             # Server
             HOST=0.0.0.0
@@ -290,15 +324,18 @@ Invoke-RestMethod -Method Post -Uri "http://localhost:8000/api/v1/query" -Conten
 
 ## 🎉 Recent Updates
 
-### ✅ **Latest Changes (September 2025):**
-1. **Provider Selection**: Configurable `MEDICAL_MODEL_PROVIDER` (groq/xai) with clean primary/fallback flow
-2. **Groq-First Configuration**: Default to Groq with `meta-llama/llama-4-maverick-17b-128e-instruct`
-3. **Robust Environment Parsing**: Auto-trim quotes/whitespace from `.env` values to prevent "Invalid API Key" errors
-4. **Centralized MCP Config**: MCP settings moved to `app/config.py` for consistency across components
-5. **Enhanced MCP Context Extraction**: Better recognition of response shapes (`topics`, `articles`, etc.)
-6. **Windows curl Guidance**: PowerShell and cmd.exe safe examples for testing
-7. **Graceful Error Handling**: Provider failures return friendly JSON with WHO fallback sources (no 500s)
-8. **Success Flag Accuracy**: `metadata.success` correctly reflects actual LLM success vs. fallback responses
+### ✅ **Latest Changes (October 2025):**
+1. **Real-time Knowledge Integration**: Tavily Search API integration for current information and general knowledge
+2. **Enhanced RAG System**: Combined MCP + Tavily + traditional RAG for comprehensive context
+3. **Intelligent Query Routing**: Automatic detection of medical vs. general knowledge queries
+4. **Provider Selection**: Configurable `MEDICAL_MODEL_PROVIDER` (groq/xai) with clean primary/fallback flow
+5. **Groq-First Configuration**: Default to Groq with `meta-llama/llama-4-maverick-17b-128e-instruct`
+6. **Robust Environment Parsing**: Auto-trim quotes/whitespace from `.env` values to prevent "Invalid API Key" errors
+7. **Centralized MCP Config**: MCP settings moved to `app/config.py` for consistency across components
+8. **Enhanced MCP Context Extraction**: Better recognition of response shapes (`topics`, `articles`, etc.)
+9. **Windows curl Guidance**: PowerShell and cmd.exe safe examples for testing
+10. **Graceful Error Handling**: Provider failures return friendly JSON with WHO fallback sources (no 500s)
+11. **Success Flag Accuracy**: `metadata.success` correctly reflects actual LLM success vs. fallback responses
 
 ### 🚀 **Configuration Improvements:**
 - Environment variables centralized in Settings with validation
@@ -333,13 +370,15 @@ For support and questions:
 
 ## 🔮 Roadmap
 
+- [x] **Real-time Knowledge Integration** - Tavily Search API for current information
+- [x] **Advanced RAG System** - Combined MCP + Tavily + document retrieval
 - [ ] Voice input/output support
 - [ ] Additional African languages
 - [ ] Mobile app integration
-- [ ] Advanced medical reasoning with RAG
 - [ ] Multi-modal support (images, documents)
-- [ ] Caching layer for improved performance
+- [ ] Enhanced caching layer for improved performance
 - [ ] Batch processing capabilities
+- [ ] Custom knowledge base uploads
 
 ## 🚀 Getting Started
 
