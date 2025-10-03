@@ -10,8 +10,8 @@ https://healthcare-mcp.onrender.com
 ## 📚 **API Overview**
 
 The HealthLang AI MVP provides a **RESTful API** with the following main categories:
-- **Medical Queries**: Process medical questions with RAG and translation using LLaMA-4 Maverick
-- **Translation**: Yoruba-English bidirectional translation using LLaMA-4 Maverick
+- **Medical Queries**: Process medical questions (English-first) with optional RAG and MCP tools
+- **Translation**: Endpoints preserved for future TTS/STT; not used by the chatbot now
 - **Health**: System health and monitoring endpoints
 - **Documentation**: Interactive API docs (Swagger/ReDoc)
 
@@ -35,22 +35,21 @@ The HealthLang AI MVP provides a **RESTful API** with the following main categor
 ### **Medical Query Endpoints**
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/api/v1/query` | Process medical query with RAG |
-| `GET` | `/api/v1/supported-languages` | Get supported languages |
+| `POST` | `/api/v1/query` | Process medical query (English-only chat flow) |
 
 ### **Translation Endpoints**
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/api/v1/translate/` | Translate text |
-| `POST` | `/api/v1/translate/batch` | Batch translation |
-| `POST` | `/api/v1/translate/detect-language` | Detect language |
-| `GET` | `/api/v1/translate/supported-languages` | Get supported languages |
-| `GET` | `/api/v1/translate/translation-stats` | Get translation statistics |
+| `POST` | `/api/v1/translate/` | Translate text (preserved; not used by chat) |
+| `POST` | `/api/v1/translate/batch` | Batch translation (preserved) |
+| `POST` | `/api/v1/translate/detect-language` | Detect language (preserved) |
+| `GET` | `/api/v1/translate/supported-languages` | Get supported languages (preserved) |
+| `GET` | `/api/v1/translate/translation-stats` | Get translation statistics (preserved) |
 
 ## 🏥 **Medical Query API**
 
 ### **POST /api/v1/query**
-Process a medical query with translation and RAG (Retrieval-Augmented Generation) using LLaMA-4 Maverick.
+Process a medical query (English-only chat flow) with optional RAG and MCP tools using LLaMA-4 Maverick.
 
 **Request Body:**
 ```json
@@ -59,18 +58,20 @@ Process a medical query with translation and RAG (Retrieval-Augmented Generation
 }
 ```
 
-**Response:**
+**Response (English in → English out):**
 ```json
 {
   "request_id": "550e8400-e29b-41d4-a716-446655440000",
   "original_query": "What are the symptoms of diabetes?",
-  "response": "**Ọrọ ibeere:** What are the symptoms of diabetes?\n**Idahun:** Àwọn àmì àìsàn ti àrùn sùkàrí (diabetes) ni:\n\n1. **Ìgbẹ̀ ti ó pọ̀ sí**: Ènìyàn tí ó ní diabetes máa ń ṣe ìgbẹ̀ púpọ̀...",
+  "response": "Common symptoms of diabetes include: increased thirst and urination, unexplained weight changes, fatigue, and blurred vision...\n\nNote: This is educational information. For personalized care, please consult a licensed clinician.",
   "processing_time": 13.45,
   "timestamp": "2024-01-15T10:30:00Z",
   "metadata": {
-    "original_language": "yo",
-    "translation_used": true,
-    "processing_steps": 4,
+    "original_language": "en",
+    "translation_used": false,
+    "rag_used": true,
+    "mcp_used": true,
+    "processing_steps": 3,
     "error": ""
   },
   "success": true,
@@ -87,10 +88,10 @@ curl -X POST "https://healthcare-mcp.onrender.com/api/v1/query" \
   }'
 ```
 
-## 🌐 **Translation API**
+## 🌐 **Translation API (preserved for future use)**
 
 ### **POST /api/v1/translate/**
-Translate text between supported languages using LLaMA-4 Maverick.
+Translate text between supported languages using LLaMA-4 Maverick. These endpoints are not used by the chatbot flow currently but are retained for upcoming voice features.
 
 **Request Body:**
 ```json
@@ -396,8 +397,8 @@ curl -X POST "https://healthcare-mcp.onrender.com/api/v1/translate/detect-langua
 | Endpoint | Average Response Time | Throughput | Model Used |
 |----------|---------------------|------------|------------|
 | `/health` | 5ms | 1000+ req/s | - |
-| `/api/v1/translate/` | 2.5s | 10+ req/s | LLaMA-4 Maverick |
 | `/api/v1/query` | 13-21s | 5+ req/s | LLaMA-4 Maverick |
+| `/api/v1/translate/` | parked | - | - |
 | `/api/v1/translate/detect-language` | 10ms | 100+ req/s | - |
 
 ## 🎯 **Key Features**

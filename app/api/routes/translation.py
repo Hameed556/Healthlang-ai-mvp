@@ -20,67 +20,59 @@ router = APIRouter()
 
 
 # Metrics
+# Cache metrics at module scope to avoid duplicate registration and
+# avoid inspecting Prometheus internals (which caused GCCollector errors).
+_translation_counter = None
+_translation_duration = None
+_translation_length = None
+
+
 def get_metrics():
-    """Get or create metrics safely"""
+    """Get or create metrics safely without registry introspection."""
+    global _translation_counter, _translation_duration, _translation_length
     try:
         from prometheus_client import Counter, Histogram
-        from prometheus_client.registry import REGISTRY
-        
-        # Check if metrics already exist
-        existing_metrics = {
-            metric.name: metric 
-            for metric in REGISTRY._collector_to_names.keys()
-        }
-        
-        if "healthlang_translations_total" in existing_metrics:
-            translation_counter = existing_metrics[
-                "healthlang_translations_total"
-            ]
-        else:
-            translation_counter = Counter(
+
+        if _translation_counter is None:
+            _translation_counter = Counter(
                 "healthlang_translations_total",
                 "Total number of translations",
-                ["source_language", "target_language", "status"]
+                ["source_language", "target_language", "status"],
             )
-        
-        if "healthlang_translation_duration_seconds" in existing_metrics:
-            translation_duration = existing_metrics[
-                "healthlang_translation_duration_seconds"
-            ]
-        else:
-            translation_duration = Histogram(
+
+        if _translation_duration is None:
+            _translation_duration = Histogram(
                 "healthlang_translation_duration_seconds",
                 "Translation duration in seconds",
-                ["source_language", "target_language"]
+                ["source_language", "target_language"],
             )
-        
-        if "healthlang_translation_length_chars" in existing_metrics:
-            translation_length = existing_metrics[
-                "healthlang_translation_length_chars"
-            ]
-        else:
-            translation_length = Histogram(
+
+        if _translation_length is None:
+            _translation_length = Histogram(
                 "healthlang_translation_length_chars",
                 "Translation text length in characters",
-                ["source_language"]
+                ["source_language"],
             )
-        
-        return translation_counter, translation_duration, translation_length
-        
+
+        return (
+            _translation_counter,
+            _translation_duration,
+            _translation_length,
+        )
+
     except Exception as e:
         logger.warning(f"Failed to initialize metrics: {e}")
-        # Create dummy metrics that don't do anything to avoid errors
-        
+
         class DummyMetric:
-            def labels(self, **kwargs): 
+            def labels(self, *args, **kwargs):
                 return self
-            
-            def inc(self): 
+
+            def inc(self):
                 pass
-            
-            def observe(self, value): 
+
+            def observe(self, value):
                 pass
-        
+
         return DummyMetric(), DummyMetric(), DummyMetric()
 
 

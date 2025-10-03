@@ -2,7 +2,6 @@
 Metrics utilities for HealthLang AI MVP
 """
 
-import asyncio
 from typing import Dict, Any, Optional
 from datetime import datetime
 from dataclasses import dataclass
@@ -175,12 +174,30 @@ async def record_pipeline_metrics(metrics: PipelineMetrics) -> None:
         if metrics.llm_duration is not None:
             llm_requests_total.labels(
                 status=status,
-                model=settings.MEDICAL_MODEL_NAME,  # From settings
+                model=(
+                    settings.GROQ_MODEL
+                    if getattr(
+                        settings,
+                        "MEDICAL_MODEL_PROVIDER",
+                        "groq",
+                    ).lower()
+                    == "groq"
+                    else settings.MEDICAL_MODEL_NAME
+                ),
                 provider="groq"
             ).inc()
             
             llm_duration_seconds.labels(
-                model=settings.MEDICAL_MODEL_NAME,
+                model=(
+                    settings.GROQ_MODEL
+                    if getattr(
+                        settings,
+                        "MEDICAL_MODEL_PROVIDER",
+                        "groq",
+                    ).lower()
+                    == "groq"
+                    else settings.MEDICAL_MODEL_NAME
+                ),
                 provider="groq"
             ).observe(metrics.llm_duration)
         
@@ -190,7 +207,10 @@ async def record_pipeline_metrics(metrics: PipelineMetrics) -> None:
         else:
             cache_misses_total.labels(cache_type="redis").inc()
         
-        logger.debug(f"Recorded pipeline metrics for request {metrics.request_id}")
+        logger.debug(
+            "Recorded pipeline metrics for request %s",
+            metrics.request_id,
+        )
         
     except Exception as e:
         logger.error(f"Failed to record pipeline metrics: {e}")
@@ -208,7 +228,6 @@ async def record_query_metrics(
     """Record query processing metrics"""
     try:
         # Record query metrics
-        status = "success" if success else "error"
         
         # Record error if not successful
         if not success:
@@ -217,7 +236,10 @@ async def record_query_metrics(
                 service="api"
             ).inc()
         
-        logger.debug(f"Recorded query metrics for request {request_id}")
+        logger.debug(
+            "Recorded query metrics for request %s",
+            request_id,
+        )
         
     except Exception as e:
         logger.error(f"Failed to record query metrics: {e}")
@@ -354,7 +376,11 @@ async def record_connection_metrics(
         else:
             active_connections.labels(service=service).dec()
         
-        logger.debug(f"Recorded connection metrics: {service}, connected={connected}")
+        logger.debug(
+            "Recorded connection metrics: %s, connected=%s",
+            service,
+            connected,
+        )
         
     except Exception as e:
         logger.error(f"Failed to record connection metrics: {e}")
@@ -372,7 +398,12 @@ async def record_response_time(
             method=method
         ).observe(duration)
         
-        logger.debug(f"Recorded response time: {endpoint} {method}, {duration}s")
+        logger.debug(
+            "Recorded response time: %s %s, %ss",
+            endpoint,
+            method,
+            duration,
+        )
         
     except Exception as e:
         logger.error(f"Failed to record response time: {e}")
@@ -492,12 +523,20 @@ async def record_medical_analysis(
         
         # This would use actual Prometheus metrics if they were defined
         # For now, just log the metrics
-        logger.info(f"Medical analysis metrics: {analysis_type}, {status}, {duration:.2f}s")
+        logger.info(
+            "Medical analysis metrics: %s, %s, %.2fs",
+            analysis_type,
+            status,
+            duration,
+        )
         
         if not success and error_type:
             logger.error(f"Medical analysis error: {error_type}")
         
-        logger.debug(f"Recorded medical analysis metrics for request {request_id}")
+        logger.debug(
+            "Recorded medical analysis metrics for request %s",
+            request_id,
+        )
         
     except Exception as e:
         logger.error(f"Failed to record medical analysis metrics: {e}")
@@ -516,7 +555,12 @@ async def record_safety_check(
         
         # This would use actual Prometheus metrics if they were defined
         # For now, just log the metrics
-        logger.info(f"Safety check metrics: {check_type}, {status}, {duration:.2f}s")
+        logger.info(
+            "Safety check metrics: %s, %s, %.2fs",
+            check_type,
+            status,
+            duration,
+        )
         
         if not passed and details:
             logger.warning(f"Safety check failed: {details}")
@@ -540,12 +584,20 @@ async def record_response_formatting(
         
         # This would use actual Prometheus metrics if they were defined
         # For now, just log the metrics
-        logger.info(f"Response formatting metrics: {format_type}, {status}, {duration:.2f}s")
+        logger.info(
+            "Response formatting metrics: %s, %s, %.2fs",
+            format_type,
+            status,
+            duration,
+        )
         
         if not success and error_type:
             logger.error(f"Response formatting error: {error_type}")
         
-        logger.debug(f"Recorded response formatting metrics for request {request_id}")
+        logger.debug(
+            "Recorded response formatting metrics for request %s",
+            request_id,
+        )
         
     except Exception as e:
         logger.error(f"Failed to record response formatting metrics: {e}")
@@ -565,12 +617,20 @@ async def record_embedding_generation(
         
         # This would use actual Prometheus metrics if they were defined
         # For now, just log the metrics
-        logger.info(f"Embedding generation metrics: {model}, {status}, {duration:.2f}s")
+        logger.info(
+            "Embedding generation metrics: %s, %s, %.2fs",
+            model,
+            status,
+            duration,
+        )
         
         if not success and error_type:
             logger.error(f"Embedding generation error: {error_type}")
         
-        logger.debug(f"Recorded embedding generation metrics for request {request_id}")
+        logger.debug(
+            "Recorded embedding generation metrics for request %s",
+            request_id,
+        )
         
     except Exception as e:
         logger.error(f"Failed to record embedding generation metrics: {e}")
@@ -590,12 +650,21 @@ async def record_embedding_batch(
         
         # This would use actual Prometheus metrics if they were defined
         # For now, just log the metrics
-        logger.info(f"Embedding batch metrics: {model}, {batch_size} items, {status}, {duration:.2f}s")
+        logger.info(
+            "Embedding batch metrics: %s, %s items, %s, %.2fs",
+            model,
+            batch_size,
+            status,
+            duration,
+        )
         
         if not success and error_type:
             logger.error(f"Embedding batch error: {error_type}")
         
-        logger.debug(f"Recorded embedding batch metrics for request {request_id}")
+        logger.debug(
+            "Recorded embedding batch metrics for request %s",
+            request_id,
+        )
         
     except Exception as e:
         logger.error(f"Failed to record embedding batch metrics: {e}")
@@ -616,12 +685,21 @@ async def record_vector_search(
         
         # This would use actual Prometheus metrics if they were defined
         # For now, just log the metrics
-        logger.info(f"Vector search metrics: {vector_store}, {results_count} results, {status}, {duration:.2f}s")
+        logger.info(
+            "Vector search metrics: %s, %s results, %s, %.2fs",
+            vector_store,
+            results_count,
+            status,
+            duration,
+        )
         
         if not success and error_type:
             logger.error(f"Vector search error: {error_type}")
         
-        logger.debug(f"Recorded vector search metrics for request {request_id}")
+        logger.debug(
+            "Recorded vector search metrics for request %s",
+            request_id,
+        )
         
     except Exception as e:
         logger.error(f"Failed to record vector search metrics: {e}")
@@ -641,12 +719,21 @@ async def record_vector_insert(
         
         # This would use actual Prometheus metrics if they were defined
         # For now, just log the metrics
-        logger.info(f"Vector insert metrics: {vector_store}, {documents_count} docs, {status}, {duration:.2f}s")
+        logger.info(
+            "Vector insert metrics: %s, %s docs, %s, %.2fs",
+            vector_store,
+            documents_count,
+            status,
+            duration,
+        )
         
         if not success and error_type:
             logger.error(f"Vector insert error: {error_type}")
         
-        logger.debug(f"Recorded vector insert metrics for request {request_id}")
+        logger.debug(
+            "Recorded vector insert metrics for request %s",
+            request_id,
+        )
         
     except Exception as e:
         logger.error(f"Failed to record vector insert metrics: {e}")
@@ -667,12 +754,21 @@ async def record_document_processing(
         
         # This would use actual Prometheus metrics if they were defined
         # For now, just log the metrics
-        logger.info(f"Document processing metrics: {document_type}, {chunks_created} chunks, {status}, {duration:.2f}s")
+        logger.info(
+            "Document processing metrics: %s, %s chunks, %s, %.2fs",
+            document_type,
+            chunks_created,
+            status,
+            duration,
+        )
         
         if not success and error_type:
             logger.error(f"Document processing error: {error_type}")
         
-        logger.debug(f"Recorded document processing metrics for request {request_id}")
+        logger.debug(
+            "Recorded document processing metrics for request %s",
+            request_id,
+        )
         
     except Exception as e:
         logger.error(f"Failed to record document processing metrics: {e}")
@@ -692,12 +788,20 @@ async def record_rag_retrieval(
         
         # This would use actual Prometheus metrics if they were defined
         # For now, just log the metrics
-        logger.info(f"RAG retrieval metrics: {documents_retrieved} docs, {status}, {duration:.2f}s")
+        logger.info(
+            "RAG retrieval metrics: %s docs, %s, %.2fs",
+            documents_retrieved,
+            status,
+            duration,
+        )
         
         if not success and error_type:
             logger.error(f"RAG retrieval error: {error_type}")
         
-        logger.debug(f"Recorded RAG retrieval metrics for request {request_id}")
+        logger.debug(
+            "Recorded RAG retrieval metrics for request %s",
+            request_id,
+        )
         
     except Exception as e:
         logger.error(f"Failed to record RAG retrieval metrics: {e}")
@@ -716,12 +820,20 @@ async def record_rag_indexing(
         
         # This would use actual Prometheus metrics if they were defined
         # For now, just log the metrics
-        logger.info(f"RAG indexing metrics: {documents_indexed} docs, {status}, {duration:.2f}s")
+        logger.info(
+            "RAG indexing metrics: %s docs, %s, %.2fs",
+            documents_indexed,
+            status,
+            duration,
+        )
         
         if not success and error_type:
-            logger.error(f"RAG indexing error: {error_type}")
+            logger.error("RAG indexing error: %s", error_type)
         
-        logger.debug(f"Recorded RAG indexing metrics for request {request_id}")
+        logger.debug(
+            "Recorded RAG indexing metrics for request %s",
+            request_id,
+        )
         
     except Exception as e:
-        logger.error(f"Failed to record RAG indexing metrics: {e}") 
+        logger.error("Failed to record RAG indexing metrics: %s", e)

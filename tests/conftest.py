@@ -3,15 +3,16 @@ Pytest configuration and fixtures for HealthLang AI MVP tests.
 """
 
 import pytest
+import pytest_asyncio
 import asyncio
-from typing import Generator, AsyncGenerator
+from typing import Generator
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.main import app
-from app.config import settings
+from app.config import settings  # noqa: F401
 from app.models.database_models import Base
 
 
@@ -26,7 +27,11 @@ test_engine = create_engine(
 )
 
 # Create test session factory
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
+TestingSessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=test_engine,
+)
 
 
 @pytest.fixture(scope="session")
@@ -118,7 +123,10 @@ def sample_document():
     """Sample document for RAG testing."""
     return {
         "id": "test_doc_001",
-        "content": "Diabetes is a chronic disease that affects how your body turns food into energy.",
+        "content": (
+            "Diabetes is a chronic disease that affects how your body turns "
+            "food into energy."
+        ),
         "metadata": {
             "title": "Diabetes Information",
             "source": "WHO Guidelines",
@@ -133,7 +141,10 @@ def sample_document():
 def mock_llm_response():
     """Mock LLM response for testing."""
     return {
-        "content": "Diabetes symptoms include increased thirst, frequent urination, and fatigue.",
+        "content": (
+            "Diabetes symptoms include increased thirst, frequent urination, "
+            "and fatigue."
+        ),
         "model": "llama-3-8b-8192",
         "usage": {
             "prompt_tokens": 50,
@@ -150,7 +161,8 @@ def mock_llm_response():
 def mock_embedding_response():
     """Mock embedding response for testing."""
     return {
-        "embeddings": [[0.1, 0.2, 0.3, 0.4, 0.5] * 20],  # 100-dimensional vector
+        # 100-dimensional vector
+        "embeddings": [[0.1, 0.2, 0.3, 0.4, 0.5] * 20],
         "model": "all-MiniLM-L6-v2",
         "dimensions": 100,
         "generation_time": 0.1,
@@ -170,7 +182,10 @@ def mock_vector_search_response():
             {
                 "document": {
                     "id": "doc_001",
-                    "content": "Diabetes symptoms include increased thirst and frequent urination.",
+                    "content": (
+                        "Diabetes symptoms include increased thirst and "
+                        "frequent urination."
+                    ),
                     "metadata": {"source": "WHO", "type": "medical"}
                 },
                 "similarity_score": 0.85,
@@ -208,12 +223,17 @@ def auth_headers():
 
 
 # Async fixtures for async tests
-@pytest.fixture
+@pytest_asyncio.fixture
 async def async_client():
     """Async test client."""
     from httpx import AsyncClient
-    
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    from httpx import ASGITransport
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://testserver",
+    ) as client:
         yield client
 
 
@@ -278,4 +298,4 @@ async def mock_llm_client():
         async def health_check(self) -> dict:
             return {"status": "healthy", "provider": "test"}
     
-    return MockLLMClient() 
+    return MockLLMClient()

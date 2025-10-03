@@ -39,21 +39,38 @@ async def lifespan(app: FastAPI):
 
 
     try:
-        # Initialize workflow
-        logger.info("Initializing HealthLang workflow...")
-        workflow = HealthLangWorkflow()
-        await workflow.initialize()
+        # Initialize workflow (non-fatal; query route lazily creates one)
+        try:
+            logger.info("Initializing HealthLang workflow...")
+            workflow = HealthLangWorkflow()
+            await workflow.initialize()
+            logger.info("Workflow initialized successfully")
+        except Exception as e:
+            logger.error(f"Workflow initialization failed (continuing): {e}")
 
-        # Expose global services on app.state for health endpoints
-        from app.services.translation.translator import TranslationService
-        from app.services.medical.llm_client import LLMClient
-        from app.services.rag.vector_store import VectorStore
-        app.state.translation_service = TranslationService()
-        await app.state.translation_service.initialize()
-        app.state.llm_client = LLMClient()
-        app.state.vector_store = VectorStore()
+        # Expose services on app.state for health endpoints.
+    # Each init is best-effort; failures are logged, startup continues.
+        try:
+            from app.services.translation.translator import TranslationService
+            app.state.translation_service = TranslationService()
+            await app.state.translation_service.initialize()
+            logger.info("TranslationService initialized")
+        except Exception as e:
+            logger.error(f"TranslationService initialization failed: {e}")
 
-        logger.info("Workflow initialized successfully")
+        try:
+            from app.services.medical.llm_client import LLMClient
+            app.state.llm_client = LLMClient()
+            logger.info("LLMClient initialized")
+        except Exception as e:
+            logger.error(f"LLMClient initialization failed: {e}")
+
+        try:
+            from app.services.rag.vector_store import VectorStore
+            app.state.vector_store = VectorStore()
+            logger.info("VectorStore initialized")
+        except Exception as e:
+            logger.error(f"VectorStore initialization failed: {e}")
 
         yield
 
@@ -74,7 +91,11 @@ async def lifespan(app: FastAPI):
 # Create FastAPI application
 app = FastAPI(
     title=settings.APP_NAME,
-    description="Bilingual (Yoruba-English) medical Q&A system with Groq-accelerated LLMs and RAG",
+    description=(
+        "English-first medical Q&A system with XAI/Groq LLMs, MCP tools, "
+        "and optional RAG (translate endpoints preserved for future voice "
+        "features)"
+    ),
     version=settings.APP_VERSION,
     docs_url="/docs",  # Always enable docs
     redoc_url="/redoc",  # Always enable redoc
@@ -98,9 +119,15 @@ if settings.PROMETHEUS_ENABLED:
 
 # Global exception handler
 @app.exception_handler(HealthLangException)
-async def healthlang_exception_handler(request: Request, exc: HealthLangException):
+async def healthlang_exception_handler(
+    request: Request,
+    exc: HealthLangException,
+):
     """Handle custom HealthLang exceptions"""
-    logger.error(f"HealthLang exception: {exc.message}", extra={"request_id": request.state.request_id})
+    logger.error(
+        f"HealthLang exception: {exc.message}",
+        extra={"request_id": request.state.request_id},
+    )
     return JSONResponse(
         status_code=exc.status_code,
         content={
@@ -114,21 +141,32 @@ async def healthlang_exception_handler(request: Request, exc: HealthLangExceptio
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Handle all other exceptions"""
-    logger.error(f"Unhandled exception: {str(exc)}", exc_info=True, extra={"request_id": request.state.request_id})
-    return JSONResponse(
-        status_code=500,
-        content={
-            "error": "Internal server error",
-            "error_code": "INTERNAL_ERROR",
-            "request_id": getattr(request.state, "request_id", None),
-        },
+    logger.error(
+        f"Unhandled exception: {str(exc)}",
+        exc_info=True,
+        extra={"request_id": request.state.request_id},
     )
+    # In development, expose the exception message to help debugging
+    content = {
+        "error": (
+            str(exc)
+            if (settings.DEBUG or settings.ENVIRONMENT == "development")
+            else "Internal server error"
+        ),
+        "error_code": "INTERNAL_ERROR",
+        "request_id": getattr(request.state, "request_id", None),
+    }
+    return JSONResponse(status_code=500, content=content)
 
 
 # Include routers
 app.include_router(health.router, prefix="", tags=["health"])
 app.include_router(query.router, prefix="/api/v1", tags=["query"])
-app.include_router(translation.router, prefix="/api/v1/translate", tags=["translation"])
+app.include_router(
+    translation.router,
+    prefix="/api/v1/translate",
+    tags=["translation"],
+)
 
 
 @app.get("/")
@@ -150,7 +188,7 @@ async def info() -> Dict[str, Any]:
         "version": settings.APP_VERSION,
         "environment": settings.ENVIRONMENT,
         "debug": settings.DEBUG,
-        "supported_languages": ["en", "yo"],
+        "supported_languages": ["en"],
         "rag_enabled": settings.RAG_ENABLED,
         "medical_model": settings.MEDICAL_MODEL_NAME,
         "vector_db_type": settings.VECTOR_DB_TYPE,
@@ -172,4 +210,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main() 
+    main()

@@ -5,19 +5,21 @@ This module provides the main RAG (Retrieval-Augmented Generation) retrieval
 service that orchestrates document retrieval, embedding generation, and search.
 """
 
-import asyncio
 import time
-from typing import Dict, List, Optional, Any, Union
+from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 from enum import Enum
 
 from loguru import logger
 
-from app.config import settings
+from app.config import settings  # noqa: F401
 from app.core.exceptions import RAGError, RetrievalError
-from app.services.rag.embeddings import EmbeddingService, EmbeddingRequest
+from app.services.rag.embeddings import EmbeddingService
 from app.services.rag.vector_store import VectorStore, SearchRequest, Document
-from app.services.rag.document_processor import DocumentProcessor, ProcessingOptions
+from app.services.rag.document_processor import (
+    DocumentProcessor,
+    ProcessingOptions,
+)
 from app.utils.metrics import record_rag_retrieval, record_rag_indexing
 
 
@@ -86,15 +88,16 @@ class RAGRetriever:
     """
     Main RAG retrieval service.
     
-    Orchestrates document indexing, embedding generation, and similarity search.
+    Orchestrates document indexing, embedding generation,
+    and similarity search.
     """
     
     def __init__(
         self,
         embedding_service: EmbeddingService,
         vector_store: VectorStore,
-        document_processor: DocumentProcessor
-    ):
+        document_processor: DocumentProcessor,
+    ) -> None:
         """
         Initialize RAG retriever.
         
@@ -128,7 +131,7 @@ class RAGRetriever:
             
             # Generate query embedding
             query_embedding = await self.embedding_service.generate_single_embedding(
-                request.query
+                request.query,
             )
             
             # Perform vector search
@@ -160,20 +163,25 @@ class RAGRetriever:
             # Apply reranking if requested
             if request.rerank_results:
                 retrieved_docs = await self._rerank_documents(
-                    request.query, 
-                    retrieved_docs
+                    request.query,
+                    retrieved_docs,
                 )
             
             retrieval_time = time.time() - start_time
             
             # Record metrics
             await record_rag_retrieval(
-                request.strategy.value,
-                len(retrieved_docs),
-                retrieval_time
+                request_id=f"rag-{request.strategy.value}",
+                query_length=len(request.query or ""),
+                documents_retrieved=len(retrieved_docs),
+                duration=retrieval_time,
+                success=True,
             )
             
-            logger.info(f"RAG retrieval completed in {retrieval_time:.2f}s, found {len(retrieved_docs)} documents")
+            logger.info(
+                f"RAG retrieval completed in {retrieval_time:.2f}s, "
+                f"found {len(retrieved_docs)} documents"
+            )
             
             return RetrievalResponse(
                 documents=retrieved_docs,
@@ -190,7 +198,23 @@ class RAGRetriever:
             
         except Exception as e:
             logger.error(f"RAG retrieval failed: {e}")
-            raise RetrievalError(f"RAG retrieval failed: {e}")
+            # Best-effort metrics on failure
+            try:
+                await record_rag_retrieval(
+                    request_id=f"rag-{request.strategy.value}",
+                    query_length=len(getattr(request, "query", "")),
+                    documents_retrieved=0,
+                    duration=0.0,
+                    success=False,
+                    error_type=type(e).__name__,
+                )
+            except Exception:
+                pass
+            # Include query in RetrievalError per exception signature
+            raise RetrievalError(
+                f"RAG retrieval failed: {e}",
+                query=getattr(request, "query", ""),
+            )
     
     async def index_documents(
         self, 
@@ -248,9 +272,10 @@ class RAGRetriever:
             
             # Record metrics
             await record_rag_indexing(
-                request.collection_name,
-                len(inserted_ids),
-                indexing_time
+                request_id=f"rag-index-{request.collection_name}",
+                documents_indexed=len(inserted_ids),
+                duration=indexing_time,
+                success=True,
             )
             
             logger.info(f"Indexed {len(inserted_ids)} document chunks in {indexing_time:.2f}s")
@@ -268,6 +293,16 @@ class RAGRetriever:
             
         except Exception as e:
             logger.error(f"Document indexing failed: {e}")
+            try:
+                await record_rag_indexing(
+                    request_id=f"rag-index-{getattr(request, 'collection_name', 'unknown')}",
+                    documents_indexed=0,
+                    duration=0.0,
+                    success=False,
+                    error_type=type(e).__name__,
+                )
+            except Exception:
+                pass
             raise RAGError(f"Document indexing failed: {e}")
     
     async def _rerank_documents(

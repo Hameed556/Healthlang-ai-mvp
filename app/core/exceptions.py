@@ -59,7 +59,12 @@ class MedicalAnalysisError(HealthLangException):
 class SafetyCheckError(HealthLangException):
     """Exception raised for safety check failures"""
     
-    def __init__(self, message: str, check_type: str, details: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        message: str,
+        check_type: str,
+        details: Optional[Dict[str, Any]] = None,
+    ):
         super().__init__(
             message=message,
             error_code="SAFETY_CHECK_ERROR",
@@ -71,7 +76,12 @@ class SafetyCheckError(HealthLangException):
 class FormattingError(HealthLangException):
     """Exception raised for response formatting errors"""
     
-    def __init__(self, message: str, format_type: str, details: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        message: str,
+        format_type: str,
+        details: Optional[Dict[str, Any]] = None,
+    ):
         super().__init__(
             message=message,
             error_code="FORMATTING_ERROR",
@@ -83,7 +93,12 @@ class FormattingError(HealthLangException):
 class LLMServiceError(MedicalAnalysisError):
     """Exception raised for LLM service errors"""
     
-    def __init__(self, message: str, provider: str, details: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        message: str,
+        provider: str,
+        details: Optional[Dict[str, Any]] = None,
+    ):
         super().__init__(
             message=message,
             details={"provider": provider, **(details or {})},
@@ -105,7 +120,12 @@ class RAGError(HealthLangException):
 class VectorStoreError(RAGError):
     """Exception raised for vector store errors"""
     
-    def __init__(self, message: str, store_type: str, details: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        message: str,
+        store_type: str,
+        details: Optional[Dict[str, Any]] = None,
+    ):
         super().__init__(
             message=message,
             details={"store_type": store_type, **(details or {})},
@@ -115,20 +135,40 @@ class VectorStoreError(RAGError):
 class RetrievalError(RAGError):
     """Exception raised for retrieval errors"""
     
-    def __init__(self, message: str, query: str, details: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        message: str,
+        query: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        details_dict: Dict[str, Any] = details.copy() if details else {}
+        if query is not None:
+            details_dict["query"] = query
         super().__init__(
             message=message,
-            details={"query": query, **(details or {})},
+            details=details_dict,
         )
 
 
 class EmbeddingError(RAGError):
     """Exception raised for embedding generation errors"""
     
-    def __init__(self, message: str, model: str, details: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        message: str,
+        model: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        # Only include model in details if provided,
+        # to allow callers to omit it
+        merged_details: Dict[str, Any] = {}
+        if details:
+            merged_details.update(details)
+        if model is not None:
+            merged_details["model"] = model
         super().__init__(
             message=message,
-            details={"model": model, **(details or {})},
+            details=merged_details,
         )
 
 
@@ -147,7 +187,12 @@ class ConfigurationError(HealthLangException):
 class ValidationError(HealthLangException):
     """Exception raised for validation errors"""
     
-    def __init__(self, message: str, field: Optional[str] = None, details: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        message: str,
+        field: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ):
         super().__init__(
             message=message,
             error_code="VALIDATION_ERROR",
@@ -198,7 +243,10 @@ class ResourceNotFoundError(HealthLangException):
             message=f"{resource_type} with id '{resource_id}' not found",
             error_code="RESOURCE_NOT_FOUND",
             status_code=404,
-            details={"resource_type": resource_type, "resource_id": resource_id},
+            details={
+                "resource_type": resource_type,
+                "resource_id": resource_id,
+            },
         )
 
 
@@ -207,7 +255,9 @@ class ServiceUnavailableError(HealthLangException):
     
     def __init__(self, service_name: str, message: Optional[str] = None):
         super().__init__(
-            message=message or f"Service '{service_name}' is currently unavailable",
+            message=(
+                message or f"Service '{service_name}' is currently unavailable"
+            ),
             error_code="SERVICE_UNAVAILABLE",
             status_code=503,
             details={"service_name": service_name},
@@ -217,7 +267,12 @@ class ServiceUnavailableError(HealthLangException):
 class DataProcessingError(HealthLangException):
     """Exception raised for data processing errors"""
     
-    def __init__(self, message: str, data_type: str, details: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        message: str,
+        data_type: str,
+        details: Optional[Dict[str, Any]] = None,
+    ):
         super().__init__(
             message=message,
             error_code="DATA_PROCESSING_ERROR",
@@ -229,7 +284,12 @@ class DataProcessingError(HealthLangException):
 class DocumentProcessingError(HealthLangException):
     """Exception raised for document processing errors"""
     
-    def __init__(self, message: str, document_type: str, details: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        message: str,
+        document_type: str,
+        details: Optional[Dict[str, Any]] = None,
+    ):
         super().__init__(
             message=message,
             error_code="DOCUMENT_PROCESSING_ERROR",
@@ -241,12 +301,34 @@ class DocumentProcessingError(HealthLangException):
 class CacheError(HealthLangException):
     """Exception raised for cache-related errors"""
     
-    def __init__(self, message: str, cache_type: str, details: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        message: str,
+        cache_type: str,
+        details: Optional[Dict[str, Any]] = None,
+    ):
         super().__init__(
             message=message,
             error_code="CACHE_ERROR",
             status_code=500,
             details={"cache_type": cache_type, **(details or {})},
+        )
+
+
+class MCPClientError(HealthLangException):
+    """Exception raised for MCP client HTTP errors"""
+    
+    def __init__(
+        self,
+        message: str,
+        status_code: int = 502,
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        super().__init__(
+            message=message,
+            error_code="MCP_CLIENT_ERROR",
+            status_code=status_code,
+            details=details,
         )
 
 
@@ -272,4 +354,5 @@ ERROR_CODES = {
     "DATA_PROCESSING_ERROR": DataProcessingError,
     "DOCUMENT_PROCESSING_ERROR": DocumentProcessingError,
     "CACHE_ERROR": CacheError,
-} 
+    "MCP_CLIENT_ERROR": MCPClientError,
+}

@@ -353,17 +353,25 @@ Respond with only one word: SAFE, CAUTION, URGENT, or EMERGENCY
         )
         
         # Add safety and disclaimer instructions
-        system_prompt = """
-You are a medical AI assistant. Provide helpful, evidence-based medical information while:
-
-1. Always emphasizing the importance of consulting healthcare providers for specific medical advice
-2. Including appropriate disclaimers about the limitations of AI medical advice
-3. Prioritizing safety and recommending medical attention when appropriate
-4. Providing structured, clear responses
-5. Acknowledging when symptoms require immediate medical attention
-
-Your responses should be educational and supportive, not diagnostic or prescriptive.
-"""
+        system_prompt = (
+            settings.SYSTEM_PROMPT
+            + "\n"  # Ensure persona is applied universally
+            + (
+                "You are a medical AI assistant. Provide helpful, "
+                "evidence-based medical information while:\n\n"
+                "1. Always emphasize consulting healthcare providers for "
+                "specific medical advice\n"
+                "2. Include appropriate disclaimers about the limitations of "
+                "AI medical advice\n"
+                "3. Prioritize safety and recommend medical attention when "
+                "appropriate\n"
+                "4. Provide structured, clear responses\n"
+                "5. Acknowledge when symptoms require immediate medical "
+                "attention\n\n"
+                "Your responses should be educational and supportive, not "
+                "diagnostic or prescriptive."
+            )
+        )
         
         llm_request = LLMRequest(
             prompt=formatted_prompt,

@@ -103,10 +103,11 @@ async def process_medical_query(
     workflow: HealthLangWorkflow = Depends(get_workflow),
 ) -> MedicalQueryResponse:
     """
-    Process a medical query using LangGraph workflow
-    
-    This endpoint accepts medical questions in Yoruba or English and returns
-    medically-informed answers using translation and medical reasoning.
+    Process a medical query (English-only chat flow).
+
+    This endpoint now accepts and responds in English only. The chatbot does not
+    auto-translate. Translation endpoints remain available under /api/v1/translate/*
+    for future TTS/STT features but are not used by the chat flow.
     
     Args:
         request: The medical query request
@@ -126,7 +127,7 @@ async def process_medical_query(
     http_request.state.request_id = request_id
     
     # Record query metrics
-    query_length.labels(source_language="auto").observe(len(request.text))
+    query_length.labels(source_language="en").observe(len(request.text))
     active_queries.inc()
     
     try:
@@ -136,8 +137,8 @@ async def process_medical_query(
         result = await workflow.process_query(request.text)
 
         query_counter.labels(
-            source_language="auto",
-            target_language="auto",
+            source_language="en",
+            target_language="en",
             status="success" if result["success"] else "error"
         ).inc()
 
@@ -162,32 +163,58 @@ async def process_medical_query(
 
     except Exception as e:
         query_counter.labels(
-            source_language="auto",
-            target_language="auto",
+            source_language="en",
+            target_language="en",
             status="error"
         ).inc()
-        logger.error(f"Error processing query (ID: {request_id}): {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "error": str(e),
-                "error_code": "INTERNAL_ERROR",
-                "request_id": request_id,
-            }
+        # Log with traceback in a loguru-friendly way
+        logger.exception(
+            f"Error processing query (ID: {request_id}): {e}"
+        )
+        # Return a structured error payload instead of raising to
+        # avoid middleware rethrow noise and ensure consistent JSON.
+        err_response = MedicalQueryResponse(
+            request_id=request_id,
+            original_query=request.text,
+            response=(
+                "Sorry, I hit a snag while processing your question. "
+                "Please try again shortly."
+            ),
+            processing_time=(datetime.now() - start_time).total_seconds(),
+            timestamp=datetime.now().isoformat(),
+            metadata={
+                "original_language": "en",
+                "translation_used": False,
+            },
+            success=False,
+            error=str(e),
+        )
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            content=err_response.model_dump(),
+            headers={"Content-Type": "application/json; charset=utf-8"},
+            status_code=200,
         )
     finally:
         duration = (datetime.now() - start_time).total_seconds()
         query_duration.labels(
-            source_language="auto",
-            target_language="auto"
+            source_language="en",
+            target_language="en"
         ).observe(duration)
         active_queries.dec()
+        # Use the success flag from the constructed response if available
+        try:
+            success_flag = False
+            if 'response' in locals() and hasattr(response, 'success'):
+                success_flag = bool(response.success)
+        except Exception:
+            success_flag = False
         await record_query_metrics(
             request_id=request_id,
-            source_language="auto",
-            target_language="auto",
+            source_language="en",
+            target_language="en",
             duration=duration,
-            success=True,
+            success=bool(success_flag),
         )
 
 
@@ -299,13 +326,12 @@ async def get_supported_languages() -> Dict[str, Any]:
         Supported language information
     """
     return {
-        "supported_languages": ["en", "yo"],
+        "supported_languages": ["en"],
         "language_names": {
-            "en": "English",
-            "yo": "Yoruba",
+            "en": "English"
         },
-        "auto_detection": True,
-        "translation_workflow": "LangGraph-based automatic translation"
+        "auto_detection": False,
+        "translation_workflow": "disabled in chat; translate endpoints reserved for future voice features"
     }
 
 

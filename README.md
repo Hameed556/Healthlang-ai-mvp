@@ -1,13 +1,17 @@
 
 # HealthLang AI MVP
 
-A bilingual (Yoruba-English) medical Q&A system powered by LLaMA-4 Maverick via Groq API, with medical reasoning and translation now integrated via a robust MCP HTTP server.
+An English-first, safety-forward medical assistant built with FastAPI that consults an MCP server and optional RAG to provide concise, cited guidance. It defaults to English and can respond in Nigerian Pidgin on explicit request. Powered by configurable LLM providers (Groq primary by default, X.AI optional).
 
 ## 🚀 Features
 
-- **Bilingual Support**: Yoruba ↔ English translation and medical Q&A
-- **Medical Intelligence**: Advanced medical reasoning via LLaMA-4 Maverick 17B
-- **High-Quality Translation**: LLaMA-4 Maverick powered translation with proper Yoruba character support
+- **English-first Chat**: All user inputs and chatbot responses are handled in English by default
+- **Provider-flexible LLM**: Configurable primary provider (Groq by default with meta-llama/llama-4-maverick-17b-128e-instruct; X.AI as optional alternative)
+- **Hybrid Context**: Optional RAG + external MCP tools (health topics, PubMed, clinical trials, etc.)
+- **MCP Integration**: HTTP client with robust error handling; graceful fallbacks when MCP unavailable
+- **Friendly Medical Persona**: Safety guardrails, "My take" opinions, Nigerian Pidgin only on explicit request
+- **Neat Sources**: Compact citations from PubMed/MCP/RAG with structured metadata
+- **Translation Endpoints (parked)**: Translate APIs are kept for future voice features but not used by the chatbot flow now
 - **Fast Performance**: Groq LPU acceleration for real-time responses
 - **Production Ready**: FastAPI + comprehensive error handling and monitoring
 - **UTF-8 Encoding**: Proper support for Yoruba diacritical marks and special characters
@@ -15,26 +19,24 @@ A bilingual (Yoruba-English) medical Q&A system powered by LLaMA-4 Maverick via 
 ## 🏗️ Architecture
 
 ```
-User Query (Yoruba/English) 
-    ↓
-Language Detection
-    ↓
-Translation Service (LLaMA-4 Maverick)
+User Query (English)
     ↓
 Medical Reasoning (LLaMA-4 Maverick)
     ↓
-Response Generation & Translation
+Optional MCP/RAG Context
     ↓
-Formatted Medical Answer (Yoruba)
+Response Generation & Post-processing (opinion, citations, contextual follow-up)
+    ↓
+Formatted Medical Answer (English)
 ```
 
 
 ## 🛠️ Tech Stack
 
 - **Backend**: FastAPI, Python 3.11+
-- **LLM**: LLaMA-4 Maverick 17B via Groq API
-- **Medical Reasoning & Tools**: MCP Node.js server (HTTP endpoints)
-- **Translation**: MCP HTTP endpoints (Yoruba-English)
+- **LLM**: LLaMA-4 Maverick 17B via X.AI Grok (primary) and Groq (fallback)
+- **Medical Reasoning & Tools**: MCP HTTP server (remote by default; sample local Python server included)
+- **Translation**: Endpoints available but not used by the chat flow (reserved for TTS/STT)
 - **Deployment**: Docker, Kubernetes ready
 - **Monitoring**: Prometheus metrics, comprehensive logging
 - **Documentation**: Auto-generated OpenAPI/Swagger
@@ -45,53 +47,114 @@ Formatted Medical Answer (Yoruba)
 ### Prerequisites
 
 - Python 3.11+
-- Groq API key
-- MCP Node.js server (see MCP documentation)
+- X.AI (Grok) API key (recommended for primary model)
+- Groq API key (used as fallback)
+- MCP HTTP server (remote default: https://healthcare-mcp.onrender.com). A sample local Python server is available in `mcp_servers/healthcare_server.py`.
 
 ### Installation
 
 1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd healthlang-ai-mvp
-   ```
+    ```bash
+    git clone <repository-url>
+    cd healthlang-ai-mvp
+    ```
 
 
 2. **Set up environment**
-    ```bash
-    cp .env.example .env
-    # Edit .env with your API keys and MCP server config:
-    # GROQ_API_KEY=your_groq_api_key
-    # MCP_BASE_URL=https://healthcare-mcp.onrender.com
-    # MCP_API_KEY=your_mcp_api_key (if required)
-    ```
+        - Copy the example env file and edit values:
+            - macOS/Linux:
+                ```bash
+                cp env.example .env
+                ```
+            - Windows (PowerShell):
+                ```powershell
+                Copy-Item env.example .env
+                ```
+        - Then open `.env` and set your keys and config:
+            ```properties
+            # LLM Provider Configuration
+            MEDICAL_MODEL_PROVIDER=groq  # groq|xai (primary workflow selector)
+            GROQ_API_KEY=your_groq_api_key  # required for Groq
+            GROQ_MODEL=meta-llama/llama-4-maverick-17b-128e-instruct
+            XAI_GROK_API_KEY=your_xai_api_key  # optional; used if provider=xai or as fallback
+            MEDICAL_MODEL_NAME=grok-beta  # used when provider=xai
+            
+            # MCP Configuration
+            MCP_ENABLED=true
+            MCP_BASE_URL=https://healthcare-mcp.onrender.com
+            MCP_API_KEY=  # optional; adds X-API-Key header if set
+            
+            # RAG Configuration
+            RAG_ENABLED=true
+            CHROMA_PERSIST_DIRECTORY=./data/chroma
+            EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+            
+            # Server
+            HOST=0.0.0.0
+            PORT=8000
+            ENVIRONMENT=development
+            ```
 
 3. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
+    ```bash
+    pip install -r requirements.txt
+    ```
 
 
 4. **Run the application**
     ```bash
-    # Start MCP server (must be running for medical reasoning and translation)
-    node mcp_servers/healthcare_server.js
+    # MCP server (choose ONE):
+    # - Remote (default): ensure MCP_BASE_URL is set (no local process needed)
+    # - Local sample (Python):
+    python mcp_servers/healthcare_server.py
 
     # Development
     python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --log-level info
+    # If you see a Windows port bind error (WinError 10048), try:
+    # python -m uvicorn app.main:app --host 127.0.0.1 --port 8001 --log-level info
 
     # Production with Docker
     docker-compose up -d
     ```
 
 
-## 📚 API Documentation
+## � MCP Integration
 
-Once running (with MCP server active), visit:
+The system uses an HTTP-based MCP (Model Context Protocol) client to fetch external medical context:
+
+**Available MCP Tools:**
+- `health_topics`: Evidence-based health information from Health.gov
+- `pubmed_search`: Medical literature from PubMed database
+- `clinical_trials_search`: Clinical trial information
+- `fda_drug_lookup`: FDA drug database lookups
+- `medical_terminology_lookup`: ICD-10 code lookups
+- `calculate_bmi`: BMI calculation utility
+
+**How it Works:**
+1. For each query, the system attempts lightweight MCP lookups (health topics + PubMed)
+2. If MCP returns usable items, `metadata.mcp_used` is set to `true` and sources are appended
+3. MCP failures are gracefully handled - the system continues with a WHO fallback source
+4. Check `/mcp-health` endpoint to verify MCP server connectivity
+
+**Response Parsing:**
+The MCP client recognizes common response shapes including `data`, `results`, `items`, `articles`, `records`, `papers`, and `topics` arrays.
+
+**Configuration:**
+- `MCP_ENABLED=true/false` - Enable/disable MCP lookups
+- `MCP_BASE_URL` - MCP server endpoint (default: https://healthcare-mcp.onrender.com)
+- `MCP_API_KEY` - Optional API key for authenticated MCP servers
+
+## �📚 API Documentation
+
+Once running (with an MCP server reachable), visit:
 - **Interactive API Docs**: http://localhost:8000/docs
 - **Health Check**: http://localhost:8000/health
 - **MCP Health Check**: http://localhost:8000/mcp-health
 - **Metrics**: http://localhost:8000/metrics
+
+Notes:
+- `/mcp-health` proxies the upstream MCP and typically includes fields like `session_id` and `uptime_seconds` when healthy.
+- Additional probes: `/health/detailed`, `/readiness`, `/liveness`.
 
 
 ### Example Usage
@@ -99,7 +162,7 @@ Once running (with MCP server active), visit:
 ```python
 import requests
 
-# Medical query (English → Yoruba response)
+# Medical query (English in → English out)
 response = requests.post("http://localhost:8000/api/v1/query", json={
     "text": "What are the symptoms of diabetes?"
 })
@@ -107,50 +170,52 @@ result = response.json()
 print(f"Response: {result['response']}")
 print(f"Processing Time: {result['processing_time']}s")
 
-# Translation (English → Yoruba)
-response = requests.post("http://localhost:8000/api/v1/translate/", json={
-    "text": "Hello, how are you?",
-    "source_language": "en",
-    "target_language": "yo"
-})
-result = response.json()
-print(f"Translated: {result['translated_text']}")
+# Response tail will include:
+# - My take: a short, non-diagnostic opinion
+# - Contextual follow-up tailored to your question (Pidgin explanation on request)
+# - Sources: neat references (PubMed / MCP / RAG) when available
 
-# Language detection
-response = requests.post("http://localhost:8000/api/v1/translate/detect-language", json={
-    "text": "Bawo ni o"
-})
-result = response.json()
-print(f"Detected Language: {result['detected_language']}")
+# Translation endpoints are preserved for future voice features.
+# They are not used by the chatbot flow. Example calls are still available in docs.
+
+# Language detection endpoint is also preserved for future use.
 ```
 
 
 ### cURL Examples
 
+**Linux/macOS:**
 ```bash
-# Medical query
-curl -X POST "http://localhost:8000/api/v1/query" \
+# Medical query (English-only chat)
+curl -X POST "http://localhost:8001/api/v1/query" \
     -H "Content-Type: application/json" \
-    -d '{"text": "What are the symptoms of diabetes?"}'
+    -d '{"text": "What are the symptoms of diabetes?", "include_sources": true}'
+```
 
-# Translation
-curl -X POST "http://localhost:8000/api/v1/translate/" \
-    -H "Content-Type: application/json" \
-    -d '{"text": "Hello, how are you?", "source_language": "en", "target_language": "yo"}'
+**Windows PowerShell (recommended):**
+```powershell
+# Use curl.exe and single quotes for JSON to avoid escaping issues
+$body = '{ "text": "What are early signs of type 2 diabetes?", "include_sources": true }'
+curl.exe -s -X POST "http://127.0.0.1:8001/api/v1/query" -H "Content-Type: application/json" -d $body
 
-# Language detection
-curl -X POST "http://localhost:8000/api/v1/translate/detect-language" \
-    -H "Content-Type: application/json" \
-    -d '{"text": "Bawo ni o"}'
+# For Nigerian Pidgin (explicit request)
+$body = '{ "text": "Explain malaria prevention. Please answer in Nigerian Pidgin and include sources." }'
+curl.exe -s -X POST "http://127.0.0.1:8001/api/v1/query" -H "Content-Type: application/json" -d $body
+```
+
+**Windows cmd.exe:**
+```cmd
+REM Escape inner quotes by doubling them
+curl -s -X POST http://127.0.0.1:8001/api/v1/query -H "Content-Type: application/json" -d "{\"text\":\"What are early signs of type 2 diabetes?\",\"include_sources\":true}"
 ```
 
 ## 🎯 Key Features
 
 
 ### ✅ **Working Features:**
-- **Medical Query Processing**: Full pipeline with MCP HTTP server and LLaMA-4 Maverick
-- **Bidirectional Translation**: English ↔ Yoruba via MCP HTTP endpoints
-- **Language Detection**: Automatic via MCP HTTP endpoints
+- **Medical Query Processing (English-first)**: Full pipeline with MCP HTTP tools and LLaMA-4 Maverick
+- **Optional RAG Context**: Retrieves relevant snippets when available
+- **Translation Endpoints (Kept for Future Use)**: Available under `/api/v1/translate/*` but not used by the chatbot now
 - **Error Handling**: Graceful fallbacks and comprehensive error messages
 - **UTF-8 Encoding**: Proper Yoruba character support (ẹ, ọ, ṣ, etc.)
 - **API Documentation**: Interactive Swagger UI at `/docs`
@@ -158,8 +223,8 @@ curl -X POST "http://localhost:8000/api/v1/translate/detect-language" \
 - **Metrics**: Prometheus metrics for monitoring
 
 ### 🔧 **Technical Stack:**
-- **LLM**: LLaMA-4 Maverick 17B via Groq API
-- **Translation**: LLaMA-4 Maverick 17B via Groq API
+- **LLM**: LLaMA-4 Maverick 17B via XAI Grok (primary), Groq fallback
+- **Translation**: Parked for future voice features
 - **Framework**: FastAPI with async support
 - **Encoding**: UTF-8 with proper Yoruba character support
 - **Documentation**: Auto-generated OpenAPI/Swagger
@@ -169,9 +234,34 @@ curl -X POST "http://localhost:8000/api/v1/translate/detect-language" \
 | Endpoint | Average Response Time | Throughput | Model Used |
 |----------|---------------------|------------|------------|
 | `/health` | 5ms | 1000+ req/s | - |
-| `/api/v1/translate/` | 2.5s | 10+ req/s | LLaMA-4 Maverick |
 | `/api/v1/query` | 13-21s | 5+ req/s | LLaMA-4 Maverick |
-| `/api/v1/translate/detect-language` | 10ms | 100+ req/s | - |
+| `/api/v1/translate/` | parked | - | - |
+| `/api/v1/translate/detect-language` | parked | - | - |
+
+## 🔧 Troubleshooting
+
+**Common Issues:**
+
+- **401 Invalid API Key (Groq)**: Verify `GROQ_API_KEY` in `.env` has no extra spaces/quotes. Restart the server after changes.
+
+- **400/404 Model Not Found**: Confirm `GROQ_MODEL` is supported by your Groq account. Try a known model like `llama-3.1-8b-instant`.
+
+- **MCP Not Used (`mcp_used=false`)**: 
+  - Check `/mcp-health` endpoint for MCP server connectivity
+  - Try more specific medical queries (e.g., mention drug names, conditions)
+  - Some broad questions may not trigger MCP responses
+
+- **JSON Decode Errors in Windows curl**: 
+  - Use `curl.exe` instead of PowerShell's `curl` alias
+  - Ensure request body uses `"text"` key (not `"query"`)
+  - Follow Windows-safe quoting patterns above
+
+- **Port 8000 Already in Use (Windows)**: Use `--port 8001` or check `netstat -ano | findstr :8000`
+
+**Environment Variable Issues:**
+- String values from `.env` are automatically trimmed of quotes and whitespace
+- Provider names are normalized to lowercase (`"Groq"` → `"groq"`)
+- Check `GET /health/detailed` to see current provider and model settings
 
 ## 🧪 Testing
 
@@ -181,7 +271,14 @@ pytest
 
 # Test specific endpoints
 curl http://localhost:8000/health
-curl http://localhost:8000/api/v1/supported-languages
+curl -X POST http://localhost:8000/api/v1/query -H "Content-Type: application/json" -d '{"text":"test"}'
+```
+
+Windows tip: If `curl` behaves unexpectedly in PowerShell, try `Invoke-RestMethod`:
+
+```powershell
+$body = @{ text = "test" } | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri "http://localhost:8000/api/v1/query" -ContentType "application/json" -Body $body
 ```
 
 ## 📊 Monitoring
@@ -193,12 +290,21 @@ curl http://localhost:8000/api/v1/supported-languages
 
 ## 🎉 Recent Updates
 
-### ✅ **Fixed Issues:**
-1. **Model Configuration**: Now using correct LLaMA-4 Maverick model throughout
-2. **Encoding Issues**: Fixed Yoruba character display problems
-3. **API Endpoints**: All endpoints now working correctly
-4. **Error Handling**: Improved fallback mechanisms
-5. **Documentation**: Updated to reflect current functionality
+### ✅ **Latest Changes (September 2025):**
+1. **Provider Selection**: Configurable `MEDICAL_MODEL_PROVIDER` (groq/xai) with clean primary/fallback flow
+2. **Groq-First Configuration**: Default to Groq with `meta-llama/llama-4-maverick-17b-128e-instruct`
+3. **Robust Environment Parsing**: Auto-trim quotes/whitespace from `.env` values to prevent "Invalid API Key" errors
+4. **Centralized MCP Config**: MCP settings moved to `app/config.py` for consistency across components
+5. **Enhanced MCP Context Extraction**: Better recognition of response shapes (`topics`, `articles`, etc.)
+6. **Windows curl Guidance**: PowerShell and cmd.exe safe examples for testing
+7. **Graceful Error Handling**: Provider failures return friendly JSON with WHO fallback sources (no 500s)
+8. **Success Flag Accuracy**: `metadata.success` correctly reflects actual LLM success vs. fallback responses
+
+### 🚀 **Configuration Improvements:**
+- Environment variables centralized in Settings with validation
+- Provider normalization and string sanitization
+- Consistent model selection based on provider choice
+- MCP client now reads from centralized settings (no env drift)
 
 ### 🚀 **Performance Improvements:**
 - Translation response time: ~2-3 seconds
@@ -239,9 +345,10 @@ For support and questions:
 
 The system is **fully functional** and ready for integration! Start by:
 
-1. Setting up your API keys in `.env`
-2. Running the application with `python -m uvicorn app.main:app --host 127.0.0.1 --port 8000`
+1. Setting up your API keys in `.env` (XAI/Groq) and confirming `MCP_BASE_URL`
+2. Running the application with `python -m uvicorn app.main:app --host 127.0.0.1 --port 8000` (or `--port 8001` if 8000 is busy on Windows)
 3. Testing the API at http://localhost:8000/docs
-4. Exploring the comprehensive API documentation
+4. Using the chat endpoint `/api/v1/query` with English inputs and reading English responses
+5. Keeping translate endpoints for future voice features (no changes needed now)
 
 The HealthLang AI MVP provides a robust foundation for bilingual medical AI applications with production-ready features and comprehensive error handling! 🎉 

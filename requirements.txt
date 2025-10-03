@@ -81,6 +81,7 @@ kubernetes>=28.1.0
 # LangChain (simplified to avoid conflicts)
 langchain>=0.2.0
 langchain-core>=0.2.27
+langchain-tavily>=0.1.0
 
 # MCP (Model Context Protocol) - optional
 # mcp>=1.0.0

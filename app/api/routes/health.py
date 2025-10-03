@@ -1,35 +1,35 @@
-from app.services.mcp_client_http import mcp_get
-from fastapi import APIRouter
-from typing import Dict, Any
-router = APIRouter()
-@router.get("/mcp-health")
-async def mcp_health_check() -> Dict[str, Any]:
-    """
-    Health check for MCP server
-    """
-    try:
-        data = await mcp_get("/health")
-        return {"status": "ok", "mcp": data}
-    except Exception as e:
-        return {"status": "error", "error": str(e)}
 """
 Health check endpoints for HealthLang AI MVP
 """
 
-import asyncio
 from datetime import datetime
 from typing import Dict, Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Request
 from prometheus_client import Counter, Histogram, Gauge
 
 from app.config import settings
 from app.utils.logger import get_logger
 from app.utils.metrics import get_metrics
+from app.services.mcp_client_http import mcp_get
+from app.core.exceptions import MCPClientError
 
 logger = get_logger(__name__)
 
 router = APIRouter()
+
+
+@router.get("/mcp-health")
+async def mcp_health_check() -> Dict[str, Any]:
+    """Health check for the configured MCP server."""
+    try:
+        data = await mcp_get("/health")
+        return {"status": "ok", "mcp": data}
+    except MCPClientError as e:
+        return {"status": "error", "error": e.message, "code": e.status_code}
+    except Exception as e:
+        # Preserve a final safety net but surface a readable message
+        return {"status": "error", "error": str(e)}
 
 # Metrics
 health_check_counter = Counter(
@@ -99,6 +99,7 @@ async def health_check(request: Request) -> Dict[str, Any]:
 
 
 @router.get("/detailed")
+@router.get("/health/detailed")
 async def detailed_health_check(request: Request) -> Dict[str, Any]:
     """
     Detailed health check endpoint
@@ -141,7 +142,9 @@ async def detailed_health_check(request: Request) -> Dict[str, Any]:
                 }
                 service_status_gauge.labels(service="translation").set(0)
         else:
-            health_status["services"]["translation"] = {"status": "not_initialized"}
+            health_status["services"]["translation"] = {
+                "status": "not_initialized"
+            }
             service_status_gauge.labels(service="translation").set(0)
 
         # Check LLM client
@@ -179,7 +182,9 @@ async def detailed_health_check(request: Request) -> Dict[str, Any]:
                 }
                 service_status_gauge.labels(service="vector_store").set(0)
         else:
-            health_status["services"]["vector_store"] = {"status": "not_initialized"}
+            health_status["services"]["vector_store"] = {
+                "status": "not_initialized"
+            }
             service_status_gauge.labels(service="vector_store").set(0)
         
         # Check Redis cache
@@ -203,7 +208,7 @@ async def detailed_health_check(request: Request) -> Dict[str, Any]:
         
         # Determine overall status
         all_healthy = all(
-            service.get("status") == "healthy" 
+            service.get("status") == "healthy"
             for service in health_status["services"].values()
         )
         
@@ -211,7 +216,10 @@ async def detailed_health_check(request: Request) -> Dict[str, Any]:
             health_status["status"] = "degraded"
         
         # Record metrics
-        health_check_counter.labels(endpoint="detailed", status="success").inc()
+        health_check_counter.labels(
+            endpoint="detailed",
+            status="success",
+        ).inc()
         
         return health_status
         
@@ -235,6 +243,7 @@ async def detailed_health_check(request: Request) -> Dict[str, Any]:
 
 
 @router.get("/readiness")
+@router.get("/health/readiness")
 async def readiness_check(request: Request) -> Dict[str, Any]:
     """
     Readiness check endpoint for Kubernetes
@@ -243,7 +252,6 @@ async def readiness_check(request: Request) -> Dict[str, Any]:
         Readiness status for the application
     """
     start_time = datetime.now()
-    
 
     try:
         # Access global services via FastAPI app state
@@ -285,22 +293,45 @@ async def readiness_check(request: Request) -> Dict[str, Any]:
         if vector_store:
             try:
                 health = await vector_store.health_check()
-                logger.info(f"[Readiness] Vector store health check result: {health}")
+                logger.info(
+                    f"[Readiness] Vector store health check result: {health}"
+                )
                 # Treat dummy backend as ready
-                if health.get("status") == "healthy" and (health.get("store_type") == "dummy" or health.get("store_type") == "chroma" or health.get("store_type") == "ephemeral"):
-                    logger.info("[Readiness] Vector store marked as ready (dummy/chroma/ephemeral backend)")
+                if health.get("status") == "healthy" and (
+                    health.get("store_type") in {
+                        "dummy",
+                        "chroma",
+                        "ephemeral",
+                    }
+                ):
+                    logger.info(
+                        (
+                            "[Readiness] Vector store marked as ready "
+                            "(dummy/chroma/ephemeral backend)"
+                        )
+                    )
                     ready_services.append("vector_store")
                 elif health.get("status") == "healthy":
-                    logger.info("[Readiness] Vector store marked as ready (other backend)")
+                    logger.info(
+                        (
+                            "[Readiness] Vector store marked as ready "
+                            "(other backend)"
+                        )
+                    )
                     ready_services.append("vector_store")
                 else:
                     logger.info("[Readiness] Vector store marked as not ready")
                     not_ready_services.append("vector_store")
             except Exception as e:
-                logger.error(f"[Readiness] Exception during vector store health check: {e}")
+                logger.error(
+                    ("[Readiness] Exception during vector store health check: "
+                     f"{e}")
+                )
                 not_ready_services.append("vector_store")
         else:
-            logger.info("[Readiness] Vector store not initialized, marked as not ready")
+            logger.info(
+                "[Readiness] Vector store not initialized, marked as not ready"
+            )
             not_ready_services.append("vector_store")
 
         # Determine readiness
@@ -316,7 +347,10 @@ async def readiness_check(request: Request) -> Dict[str, Any]:
         }
 
         # Record metrics
-        health_check_counter.labels(endpoint="readiness", status=status_str).inc()
+        health_check_counter.labels(
+            endpoint="readiness",
+            status=status_str,
+        ).inc()
 
         return readiness_status
 
@@ -338,6 +372,7 @@ async def readiness_check(request: Request) -> Dict[str, Any]:
 
 
 @router.get("/liveness")
+@router.get("/health/liveness")
 async def liveness_check(request: Request) -> Dict[str, Any]:
     """
     Liveness check endpoint for Kubernetes
@@ -375,8 +410,10 @@ async def liveness_check(request: Request) -> Dict[str, Any]:
         health_check_duration.labels(endpoint="liveness").observe(duration)
 
 
-@router.get("/metrics")
-async def metrics_endpoint() -> Dict[str, Any]:
+# NOTE: Prometheus is mounted at `/metrics` in app.main. Expose a JSON summary
+# under a different path to avoid conflicting with Prometheus text format.
+@router.get("/metrics/summary")
+async def metrics_summary_endpoint() -> Dict[str, Any]:
     """
     Application metrics endpoint
     
@@ -394,4 +431,4 @@ async def metrics_endpoint() -> Dict[str, Any]:
         return {
             "error": str(e),
             "timestamp": datetime.now().isoformat(),
-        } 
+        }

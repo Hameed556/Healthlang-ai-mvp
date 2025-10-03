@@ -54,9 +54,13 @@ def test_metrics_endpoint(client: TestClient):
     response = client.get("/metrics")
     assert response.status_code == 200
     
-    # Should return Prometheus metrics format
+    # Should return Prometheus metrics text format mounted by Prometheus ASGI
     content = response.text
-    assert "healthlang_" in content or "# HELP" in content
+    assert (
+        "# HELP" in content
+        or "# TYPE" in content
+        or "healthlang_" in content
+    )
 
 
 @pytest.mark.asyncio
@@ -121,18 +125,22 @@ def test_health_check_headers(client: TestClient):
 def test_health_check_cors_headers(client: TestClient):
     """Test CORS headers in health check response."""
     response = client.options("/health")
-    assert response.status_code in [200, 405]  # OPTIONS might not be implemented
+    # OPTIONS might not be implemented
+    assert response.status_code in [200, 405]
     
     if response.status_code == 200:
         headers = response.headers
         # Check for CORS headers if implemented
         if "access-control-allow-origin" in headers:
-            assert headers["access-control-allow-origin"] in ["*", "https://healthcare-mcp.onrender.com"]
+            assert headers["access-control-allow-origin"] in [
+                "*",
+                "https://healthcare-mcp.onrender.com",
+            ]
 
 
 def test_health_check_performance(client: TestClient):
     """Test health check response time."""
-    import time
+    import time  # noqa: F401
     
     start_time = time.time()
     response = client.get("/health")
@@ -142,7 +150,9 @@ def test_health_check_performance(client: TestClient):
     
     # Health check should be fast (less than 1 second)
     response_time = end_time - start_time
-    assert response_time < 1.0, f"Health check took too long: {response_time:.2f}s"
+    assert response_time < 1.0, (
+        f"Health check took too long: {response_time:.2f}s"
+    )
 
 
 def test_health_check_concurrent_requests(client: TestClient):
@@ -174,4 +184,6 @@ def test_health_check_concurrent_requests(client: TestClient):
     # Check results
     assert len(errors) == 0, f"Errors occurred: {errors}"
     assert len(results) == 5
-    assert all(status == 200 for status in results), f"Not all requests succeeded: {results}" 
+    assert all(status == 200 for status in results), (
+        f"Not all requests succeeded: {results}"
+    )
