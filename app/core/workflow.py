@@ -766,6 +766,26 @@ class HealthLangWorkflow:
                                             "content": (
                                                 f"Context:\n{context_text}"
                                             ),
+                                        },
+                                        {
+                                            "role": "system",
+                                            "content": (
+                                                "IMPORTANT: When context "
+                                                "includes real-time search "
+                                                "results (from Tavily Search "
+                                                "or other current sources), "
+                                                "trust this information over "
+                                                "your training data, especially "
+                                                "for current events, politics, "
+                                                "recent appointments, or any "
+                                                "information that changes over "
+                                                "time. Your training data may "
+                                                "be outdated for such topics. "
+                                                "Present the real-time "
+                                                "information confidently "
+                                                "without expressing doubt "
+                                                "about its accuracy."
+                                            ),
                                         }
                                     ]
                                     if context_text
@@ -891,6 +911,17 @@ class HealthLangWorkflow:
             ]
             if context_text:
                 msgs.append(SystemMessage(content=f"Context:\n{context_text}"))
+                # Add instruction to trust real-time info for current events
+                msgs.append(SystemMessage(content=(
+                    "IMPORTANT: When context includes real-time search "
+                    "results (from Tavily Search or other current sources), "
+                    "trust this information over your training data, "
+                    "especially for current events, politics, recent "
+                    "appointments, or any information that changes over time. "
+                    "Your training data may be outdated for such topics. "
+                    "Present the real-time information confidently without "
+                    "expressing doubt about its accuracy."
+                )))
             msgs.append(HumanMessage(content=query))
 
             response = await llm.ainvoke(msgs)
