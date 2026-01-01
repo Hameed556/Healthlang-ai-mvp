@@ -9,6 +9,7 @@ from datetime import datetime
 from app.config import settings
 from app.core.exceptions import TranslationError
 from app.utils.logger import get_logger
+from app.services.medical.llm_client import LLMClient, LLMRequest
 
 logger = get_logger(__name__)
 
@@ -20,8 +21,7 @@ class LanguageDetector:
     
     def __init__(self):
         self._initialized = False
-        self.yoruba_patterns = self._load_yoruba_patterns()
-        self.english_patterns = self._load_english_patterns()
+        self.llm_client = LLMClient()
     
     async def initialize(self) -> None:
         """Initialize the language detector"""
@@ -68,8 +68,8 @@ class LanguageDetector:
         try:
             logger.debug(f"Detecting language for: {text[:100]}...")
             
-            # Use pattern-based detection for MVP
-            detected_lang = self._pattern_based_detection(text)
+            # Use LLM-based detection
+            detected_lang = await self._llm_based_detection(text)
             
             logger.debug(f"Language detected: {detected_lang}")
             return detected_lang
@@ -110,85 +110,74 @@ class LanguageDetector:
             logger.error(f"Batch language detection failed: {e}")
             raise TranslationError(f"Failed to detect languages in batch: {e}")
     
-    def _pattern_based_detection(self, text: str) -> str:
+    async def _llm_based_detection(self, text: str) -> str:
         """
-        Pattern-based language detection
+        LLM-based language detection using Groq.
         
-        This is a simple implementation for MVP. In production, you would use:
-        - langdetect library
-        - Polyglot library
-        - Custom trained models
-        - API services like Google Translate API
+        Detects between English and Yoruba languages.
+        """
+        try:
+            system_prompt = """You are a language detector. Identify if the given text is in ENGLISH or YORUBA (Nigerian Pidgin).
+
+ENGLISH characteristics:
+- Standard English vocabulary and grammar
+- Common words: the, and, is, are, have, what, how, doctor, medicine, treatment
+
+YORUBA characteristics:
+- Yoruba vocabulary and grammar
+- Special characters: ẹ, ọ, ṣ
+- Common words: bawo, oogun, dokita, ile, iwosan, alafia, dara
+- Yoruba phrases and expressions
+
+Respond with ONLY one word: ENGLISH or YORUBA"""
+            
+            request = LLMRequest(
+                prompt=f"Text: {text}\n\nDetect the language:",
+                system_prompt=system_prompt,
+                max_tokens=10,
+                temperature=0.1
+            )
+            
+            response = await self.llm_client.generate(request)
+            classification = response.content.strip().upper()
+            
+            # Map to language codes
+            if "YORUBA" in classification:
+                detected = "yo"
+            else:
+                detected = "en"
+            
+            logger.info(f"LLM detected language: {classification} -> {detected}")
+            return detected
+            
+        except Exception as e:
+            logger.warning(f"LLM language detection failed, using fallback: {e}")
+            return self._fallback_detection(text)
+    
+    def _fallback_detection(self, text: str) -> str:
+        """
+        Minimal fallback detection using character and word patterns.
+        
+        Args:
+            text: Text to detect language for
+            
+        Returns:
+            Language code (en or yo)
         """
         text_lower = text.lower()
         
-        # Count Yoruba-specific patterns
-        yoruba_score = 0
-        for pattern in self.yoruba_patterns:
-            matches = len(re.findall(pattern, text_lower))
-            yoruba_score += matches
-        
-        # Count English-specific patterns
-        english_score = 0
-        for pattern in self.english_patterns:
-            matches = len(re.findall(pattern, text_lower))
-            english_score += matches
-        
         # Check for Yoruba-specific characters
-        yoruba_chars = len(re.findall(r'[ọọẹẹṣṣ]', text))
-        yoruba_score += yoruba_chars * 2  # Weight Yoruba characters more heavily
-        
-        # Determine language based on scores
-        if yoruba_score > english_score:
+        yoruba_chars = re.findall(r'[ọẹṣ]', text_lower)
+        if len(yoruba_chars) >= 2:
             return "yo"
-        elif english_score > yoruba_score:
-            return "en"
-        else:
-            # If scores are equal, check for common words
-            return self._fallback_detection(text_lower)
-    
-    def _fallback_detection(self, text: str) -> str:
-        """Fallback detection using common words"""
-        yoruba_common_words = {
-            "bawo", "o", "ni", "se", "dabọ", "oogun", "dokita", "ile", "iwosan",
-            "iro", "iba", "ori", "fifo", "alafia", "dara", "ko", "ti", "wa"
-        }
         
-        english_common_words = {
-            "the", "and", "or", "but", "in", "on", "at", "to", "for", "of",
-            "with", "by", "is", "are", "was", "were", "be", "been", "have",
-            "has", "had", "do", "does", "did", "will", "would", "could", "should"
-        }
-        
-        words = set(text.split())
-        
-        yoruba_matches = len(words.intersection(yoruba_common_words))
-        english_matches = len(words.intersection(english_common_words))
-        
-        if yoruba_matches > english_matches:
+        # Check for common Yoruba words
+        yoruba_words = ['bawo', 'oogun', 'dokita', 'alafia', 'dara', 'dabọ']
+        if any(word in text_lower for word in yoruba_words):
             return "yo"
-        else:
-            return "en"  # Default to English
-    
-    def _load_yoruba_patterns(self) -> List[str]:
-        """Load Yoruba language patterns"""
-        return [
-            r'\b(bawo|o|ni|se|dabọ|oogun|dokita|ile|iwosan)\b',
-            r'\b(iro|iba|ori|fifo|alafia|dara|ko|ti|wa)\b',
-            r'\b(ẹ|ọ|ṣ)\w*',  # Words starting with Yoruba characters
-            r'\b\w*[ọọẹẹṣṣ]\w*\b',  # Words containing Yoruba characters
-            r'\b(ẹyin|ẹ|ọ|ṣ)\b',  # Common Yoruba pronouns/particles
-        ]
-    
-    def _load_english_patterns(self) -> List[str]:
-        """Load English language patterns"""
-        return [
-            r'\b(the|and|or|but|in|on|at|to|for|of)\b',
-            r'\b(with|by|is|are|was|were|be|been|have|has)\b',
-            r'\b(had|do|does|did|will|would|could|should)\b',
-            r'\b(hello|how|are|you|thank|goodbye|medicine|doctor|hospital)\b',
-            r'\b(pain|fever|headache|treatment|symptom|disease|illness)\b',
-        ]
+        
+        # Default to English
+        return "en"
     
     async def get_confidence_score(self, text: str) -> Dict[str, Any]:
         """
@@ -204,41 +193,23 @@ class LanguageDetector:
             await self.initialize()
         
         try:
-            text_lower = text.lower()
+            # Use LLM detection
+            detected_lang = await self._llm_based_detection(text)
             
-            # Calculate scores
-            yoruba_score = 0
-            for pattern in self.yoruba_patterns:
-                matches = len(re.findall(pattern, text_lower))
-                yoruba_score += matches
-            
-            english_score = 0
-            for pattern in self.english_patterns:
-                matches = len(re.findall(pattern, text_lower))
-                english_score += matches
-            
-            # Add character-based scores
-            yoruba_chars = len(re.findall(r'[ọọẹẹṣṣ]', text))
-            yoruba_score += yoruba_chars * 2
-            
-            # Normalize scores
-            total_score = yoruba_score + english_score
-            if total_score == 0:
-                yoruba_confidence = 0.5
-                english_confidence = 0.5
+            # LLM-based detection has high confidence
+            if detected_lang == "yo":
+                yoruba_confidence = 0.9
+                english_confidence = 0.1
             else:
-                yoruba_confidence = yoruba_score / total_score
-                english_confidence = english_score / total_score
+                yoruba_confidence = 0.1
+                english_confidence = 0.9
             
             return {
                 "yoruba_confidence": yoruba_confidence,
                 "english_confidence": english_confidence,
-                "detected_language": "yo" if yoruba_confidence > english_confidence else "en",
+                "detected_language": detected_lang,
                 "confidence_score": max(yoruba_confidence, english_confidence),
-                "scores": {
-                    "yoruba": yoruba_score,
-                    "english": english_score,
-                },
+                "method": "llm",
                 "timestamp": datetime.now().isoformat(),
             }
             
@@ -258,10 +229,8 @@ class LanguageDetector:
         health_status = {
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
-            "patterns_loaded": {
-                "yoruba": len(self.yoruba_patterns),
-                "english": len(self.english_patterns),
-            },
+            "method": "llm_based",
+            "llm_available": self.llm_client is not None,
         }
         
         try:

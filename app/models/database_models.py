@@ -4,12 +4,22 @@ Database Models
 SQLAlchemy ORM models for database tables.
 """
 
-from typing import Dict, List, Optional, Any
-from sqlalchemy import Column, String, Integer, Float, Boolean, DateTime, Text, JSON, ForeignKey, Index
+from sqlalchemy import (
+    Column,
+    String,
+    Integer,
+    Float,
+    Boolean,
+    DateTime,
+    Text,
+    JSON,
+    ForeignKey,
+    Index,
+)
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
-from datetime import datetime
+from sqlalchemy import func
+# from datetime import datetime
 import uuid
 
 Base = declarative_base()
@@ -32,13 +42,24 @@ class User(Base):
     preferred_language = Column(String(10), default="en", nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     is_verified = Column(Boolean, default=False, nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
     last_login = Column(DateTime(timezone=True), nullable=True)
     
     # Relationships
-    queries = relationship("Query", back_populates="user", cascade="all, delete-orphan")
-    translations = relationship("Translation", back_populates="user", cascade="all, delete-orphan")
+    queries = relationship(
+        "Query", back_populates="user", cascade="all, delete-orphan"
+    )
+    translations = relationship(
+        "Translation", back_populates="user", cascade="all, delete-orphan"
+    )
     
     # Indexes
     __table_args__ = (
@@ -53,21 +74,47 @@ class Query(Base):
     __tablename__ = "queries"
     
     id = Column(String(36), primary_key=True, default=generate_uuid)
-    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
+    user_id = Column(
+        String(36), ForeignKey("users.id"), nullable=True, index=True
+    )
+    
+    # Query fields
     query_text = Column(Text, nullable=False)
     query_type = Column(String(50), nullable=True)
     language = Column(String(10), default="en", nullable=False)
-    analysis = Column(Text, nullable=False)
+    
+    # Response fields (supporting both old and new formats)
+    # Old format - structured medical analysis
+    analysis = Column(Text, nullable=True)
+    # New format - direct response text
+    response_text = Column(Text, nullable=True)
+    
+    # Medical analysis fields
     recommendations = Column(JSON, nullable=True)
-    safety_level = Column(String(20), nullable=False)
-    confidence_score = Column(Float, nullable=False)
+    safety_level = Column(String(20), nullable=True)
+    confidence_score = Column(Float, nullable=True)
     disclaimers = Column(JSON, nullable=True)
     follow_up_questions = Column(JSON, nullable=True)
     emergency_indicators = Column(JSON, nullable=True)
-    sources = Column(JSON, nullable=True)
+    
+    # Source and metadata
+    sources = Column(Text, nullable=True)  # Comma-separated URLs or JSON
     processing_time = Column(Float, nullable=False)
     request_metadata = Column(JSON, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    
+    # Status fields
+    success = Column(Boolean, default=True, nullable=False)
+    error = Column(Text, nullable=True)
+    original_language = Column(String(10), default="en", nullable=False)
+    target_language = Column(String(10), default="en", nullable=False)
+    
+    # Timestamp
+    timestamp = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
     
     # Relationships
     user = relationship("User", back_populates="queries")
@@ -76,28 +123,34 @@ class Query(Base):
     __table_args__ = (
         Index('idx_queries_user_id', 'user_id'),
         Index('idx_queries_created_at', 'created_at'),
+        Index('idx_queries_timestamp', 'timestamp'),
         Index('idx_queries_language', 'language'),
         Index('idx_queries_query_type', 'query_type'),
         Index('idx_queries_safety_level', 'safety_level'),
+        Index('idx_queries_success', 'success'),
     )
 
 
 class Translation(Base):
-    """Translation model."""
+    """Translation model (deprecated; kept for compatibility)."""
     __tablename__ = "translations"
     
     id = Column(String(36), primary_key=True, default=generate_uuid)
-    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
-    original_text = Column(Text, nullable=False)
-    translated_text = Column(Text, nullable=False)
-    source_language = Column(String(10), nullable=False)
-    target_language = Column(String(10), nullable=False)
-    confidence_score = Column(Float, nullable=False)
-    processing_time = Column(Float, nullable=False)
+    user_id = Column(
+        String(36), ForeignKey("users.id"), nullable=True, index=True
+    )
+    original_text = Column(Text, nullable=True)
+    translated_text = Column(Text, nullable=True)
+    source_language = Column(String(10), nullable=True)
+    target_language = Column(String(10), nullable=True)
+    confidence_score = Column(Float, nullable=True)
+    processing_time = Column(Float, nullable=True)
     context = Column(Text, nullable=True)
     preserve_formatting = Column(Boolean, default=True, nullable=False)
     request_metadata = Column(JSON, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
     
     # Relationships
     user = relationship("User", back_populates="translations")
@@ -130,8 +183,15 @@ class Document(Base):
     processing_time = Column(Float, nullable=True)
     file_size = Column(Integer, nullable=True)
     checksum = Column(String(64), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
     
     # Indexes
     __table_args__ = (
@@ -148,14 +208,18 @@ class DocumentChunk(Base):
     __tablename__ = "document_chunks"
     
     id = Column(String(36), primary_key=True, default=generate_uuid)
-    document_id = Column(String(36), ForeignKey("documents.id"), nullable=False, index=True)
+    document_id = Column(
+        String(36), ForeignKey("documents.id"), nullable=False, index=True
+    )
     chunk_index = Column(Integer, nullable=False)
     content = Column(Text, nullable=False)
     embedding = Column(JSON, nullable=True)  # Store embedding as JSON array
     chunk_metadata = Column(JSON, nullable=True)
     vector_id = Column(String(255), nullable=True)  # ID in vector store
     similarity_score = Column(Float, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
     
     # Relationships
     document = relationship("Document")
@@ -180,8 +244,15 @@ class Collection(Base):
     embedding_model = Column(String(100), nullable=True)
     vector_store_type = Column(String(50), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
     
     # Indexes
     __table_args__ = (
@@ -195,15 +266,26 @@ class CollectionDocument(Base):
     __tablename__ = "collection_documents"
     
     id = Column(String(36), primary_key=True, default=generate_uuid)
-    collection_id = Column(String(36), ForeignKey("collections.id"), nullable=False, index=True)
-    document_id = Column(String(36), ForeignKey("documents.id"), nullable=False, index=True)
-    added_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    collection_id = Column(
+        String(36), ForeignKey("collections.id"), nullable=False, index=True
+    )
+    document_id = Column(
+        String(36), ForeignKey("documents.id"), nullable=False, index=True
+    )
+    added_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
     
     # Indexes
     __table_args__ = (
         Index('idx_collection_documents_collection_id', 'collection_id'),
         Index('idx_collection_documents_document_id', 'document_id'),
-        Index('idx_collection_documents_unique', 'collection_id', 'document_id', unique=True),
+        Index(
+            'idx_collection_documents_unique',
+            'collection_id',
+            'document_id',
+            unique=True,
+        ),
     )
 
 
@@ -212,14 +294,18 @@ class APIKey(Base):
     __tablename__ = "api_keys"
     
     id = Column(String(36), primary_key=True, default=generate_uuid)
-    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(
+        String(36), ForeignKey("users.id"), nullable=False, index=True
+    )
     name = Column(String(100), nullable=False)
     key_hash = Column(String(255), nullable=False)
     permissions = Column(JSON, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     last_used = Column(DateTime(timezone=True), nullable=True)
     expires_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
     
     # Indexes
     __table_args__ = (
@@ -234,14 +320,18 @@ class AuditLog(Base):
     __tablename__ = "audit_logs"
     
     id = Column(String(36), primary_key=True, default=generate_uuid)
-    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
+    user_id = Column(
+        String(36), ForeignKey("users.id"), nullable=True, index=True
+    )
     action = Column(String(100), nullable=False)
     resource_type = Column(String(50), nullable=False)
     resource_id = Column(String(36), nullable=True)
     details = Column(JSON, nullable=True)
     ip_address = Column(String(45), nullable=True)
     user_agent = Column(Text, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
     
     # Indexes
     __table_args__ = (
@@ -261,7 +351,9 @@ class SystemMetric(Base):
     metric_value = Column(Float, nullable=False)
     metric_unit = Column(String(20), nullable=True)
     labels = Column(JSON, nullable=True)
-    timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    timestamp = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
     
     # Indexes
     __table_args__ = (
@@ -275,7 +367,8 @@ class RateLimit(Base):
     __tablename__ = "rate_limits"
     
     id = Column(String(36), primary_key=True, default=generate_uuid)
-    key = Column(String(255), nullable=False, index=True)  # IP, user_id, or API key
+    # key can be IP, user_id, or API key
+    key = Column(String(255), nullable=False, index=True)
     endpoint = Column(String(100), nullable=False)
     window_start = Column(DateTime(timezone=True), nullable=False)
     request_count = Column(Integer, default=0, nullable=False)
@@ -287,4 +380,119 @@ class RateLimit(Base):
         Index('idx_rate_limits_key', 'key'),
         Index('idx_rate_limits_endpoint', 'endpoint'),
         Index('idx_rate_limits_window_start', 'window_start'),
-    ) 
+    )
+
+
+# ---------------------
+# Conversational Memory
+# ---------------------
+
+class Conversation(Base):
+    """A conversation thread owned by a user (similar to ChatGPT chats)."""
+    __tablename__ = "conversations"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    user_id = Column(
+        String(36), ForeignKey("users.id"), nullable=False, index=True
+    )
+    title = Column(String(200), nullable=True)
+    archived = Column(Boolean, default=False, nullable=False)
+    conversation_metadata = Column(JSON, nullable=True)
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        Index('idx_conversations_user_id', 'user_id'),
+        Index('idx_conversations_archived', 'archived'),
+        Index('idx_conversations_updated_at', 'updated_at'),
+    )
+
+
+class Message(Base):
+    """A single chat message within a conversation."""
+    __tablename__ = "messages"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    conversation_id = Column(
+        String(36), ForeignKey("conversations.id"), nullable=False, index=True
+    )
+    user_id = Column(
+        String(36), ForeignKey("users.id"), nullable=True, index=True
+    )
+    # role values: user | assistant | system | tool
+    role = Column(String(20), nullable=False)
+    content = Column(Text, nullable=False)
+    model = Column(String(100), nullable=True)
+    tokens = Column(Integer, nullable=True)
+    latency = Column(Float, nullable=True)
+    tool_calls = Column(JSON, nullable=True)
+    attachments = Column(JSON, nullable=True)
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        Index('idx_messages_conversation_id', 'conversation_id'),
+        Index('idx_messages_user_id', 'user_id'),
+        Index('idx_messages_role', 'role'),
+        Index('idx_messages_created_at', 'created_at'),
+    )
+
+
+class ConversationSummary(Base):
+    """Rolling summary to preserve long-term memory with low token use."""
+    __tablename__ = "conversation_summaries"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    conversation_id = Column(
+        String(36), ForeignKey("conversations.id"), nullable=False, index=True
+    )
+    summary_text = Column(Text, nullable=False)
+    token_count = Column(Integer, nullable=True)
+    last_message_id = Column(String(36), nullable=True)
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        Index('idx_conversation_summaries_conversation_id', 'conversation_id'),
+        Index('idx_conversation_summaries_updated_at', 'updated_at'),
+    )
+
+
+class UserPreference(Base):
+    """Per-user settings and feature flags (for front-end sync)."""
+    __tablename__ = "user_preferences"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    user_id = Column(
+        String(36), ForeignKey("users.id"), nullable=False, index=True
+    )
+    # e.g., theme, default_language, safe_mode
+    preferences = Column(JSON, nullable=True)
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        Index('idx_user_preferences_user_id', 'user_id'),
+    )

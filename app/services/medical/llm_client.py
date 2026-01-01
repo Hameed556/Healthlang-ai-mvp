@@ -1,11 +1,9 @@
 """
 LLM Client Service
 
-This module provides a client for interfacing with Groq and X.AI Grok LLM providers.
+This module provides a client for interfacing with Groq LLM provider.
 """
 
-import asyncio
-import json
 import time
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
@@ -22,7 +20,6 @@ from app.utils.metrics import record_llm_metrics
 class LLMProvider(str, Enum):
     """Supported LLM providers."""
     GROQ = "groq"
-    XAI_GROK = "xai_grok"
     LOCAL = "local"
 
 @dataclass
@@ -56,14 +53,13 @@ class LLMClient:
             "provider": str(self.provider)
         }
     """
-    Client for interfacing with Groq and X.AI Grok LLM providers.
+    Client for interfacing with Groq LLM provider.
     """
     def __init__(self):
         self.provider = LLMProvider(settings.LLM_PROVIDER) if not isinstance(settings.LLM_PROVIDER, LLMProvider) else settings.LLM_PROVIDER
         self.clients: Dict[LLMProvider, Any] = {}
         self.models: Dict[LLMProvider, str] = {
             LLMProvider.GROQ: settings.GROQ_MODEL,
-            LLMProvider.XAI_GROK: "grok-3-latest",
             LLMProvider.LOCAL: settings.LOCAL_MODEL
         }
         self._initialize_clients()
@@ -73,15 +69,15 @@ class LLMClient:
             if settings.GROQ_API_KEY:
                 self.clients[LLMProvider.GROQ] = AsyncGroq(api_key=settings.GROQ_API_KEY)
                 logger.info("Groq client initialized")
-            if settings.XAI_GROK_API_KEY:
-                self.clients[LLMProvider.XAI_GROK] = settings.XAI_GROK_API_KEY
-                logger.info("X.AI Grok API key loaded")
             if settings.LOCAL_MODEL_ENDPOINT:
                 self.clients[LLMProvider.LOCAL] = settings.LOCAL_MODEL_ENDPOINT
                 logger.info("Local model client initialized")
         except Exception as e:
             logger.error(f"Failed to initialize LLM clients: {e}")
-            raise LLMServiceError(f"LLM client initialization failed: {e}")
+            raise LLMServiceError(
+                f"LLM client initialization failed: {e}",
+                provider=str(self.provider)
+            ) from e
 
     async def generate(
         self, 
@@ -93,12 +89,13 @@ class LLMClient:
         try:
             if provider == LLMProvider.GROQ:
                 response = await self._generate_groq(request)
-            elif provider == LLMProvider.XAI_GROK:
-                response = await self._generate_xai_grok(request)
             elif provider == LLMProvider.LOCAL:
                 response = await self._generate_local(request)
             else:
-                raise LLMServiceError(f"Unsupported provider: {provider}")
+                raise LLMServiceError(
+                    f"Unsupported provider: {provider}",
+                    provider=str(provider)
+                )
             response_time = time.time() - start_time
             response.response_time = response_time
             # Record LLM metrics
@@ -115,7 +112,50 @@ class LLMClient:
             return response
         except Exception as e:
             logger.error(f"LLM generation failed: {e}")
-            raise LLMServiceError(f"LLM generation failed: {e}")
+            raise LLMServiceError(
+                f"LLM generation failed: {e}",
+                provider=str(provider)
+            ) from e
+
+    async def streaming_generate(
+        self,
+        request: LLMRequest,
+        provider: Optional[LLMProvider] = None
+    ):
+        """Stream LLM response chunks. Only supported for Groq."""
+        provider = LLMProvider(provider) if provider and not isinstance(provider, LLMProvider) else (provider or self.provider)
+        
+        if provider != LLMProvider.GROQ:
+            raise LLMServiceError(f"Streaming not supported for provider: {provider}")
+        
+        try:
+            client = self.clients[LLMProvider.GROQ]
+            model = request.model or self.models[LLMProvider.GROQ]
+            
+            messages = []
+            if request.system_prompt:
+                messages.append({"role": "system", "content": request.system_prompt})
+            messages.append({"role": "user", "content": request.prompt})
+            
+            stream = await client.chat.completions.create(
+                model=model,
+                messages=messages,
+                max_tokens=request.max_tokens,
+                temperature=request.temperature,
+                top_p=request.top_p,
+                stream=True
+            )
+            
+            async for chunk in stream:
+                if chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+                    
+        except Exception as e:
+            logger.error(f"Streaming generation failed: {e}")
+            raise LLMServiceError(
+                f"Streaming generation failed: {e}",
+                provider=str(provider)
+            ) from e
 
     async def _generate_groq(self, request: LLMRequest) -> LLMResponse:
         client = self.clients[LLMProvider.GROQ]
@@ -143,37 +183,6 @@ class LLMClient:
             finish_reason=response.choices[0].finish_reason,
             response_time=0.0,
             provider=LLMProvider.GROQ.value
-        )
-
-    async def _generate_xai_grok(self, request: LLMRequest) -> LLMResponse:
-        api_key = self.clients[LLMProvider.XAI_GROK]
-        model = request.model or self.models[LLMProvider.XAI_GROK]
-        url = f"{settings.XAI_GROK_BASE_URL}/chat/completions"
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}"
-        }
-        messages = []
-        if request.system_prompt:
-            messages.append({"role": "system", "content": request.system_prompt})
-        messages.append({"role": "user", "content": request.prompt})
-        payload = {
-            "messages": messages,
-            "model": model,
-            "stream": request.stream,
-            "temperature": request.temperature
-        }
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(url, headers=headers, json=payload, timeout=settings.LLM_TIMEOUT)
-            resp.raise_for_status()
-            data = resp.json()
-        return LLMResponse(
-            content=data["choices"][0]["message"]["content"],
-            model=data["model"],
-            usage=data.get("usage", {}),
-            finish_reason=data["choices"][0].get("finish_reason"),
-            response_time=0.0,
-            provider=LLMProvider.XAI_GROK.value
         )
 
     async def _generate_local(self, request: LLMRequest) -> LLMResponse:
@@ -209,4 +218,4 @@ class LLMClient:
             finish_reason=data["choices"][0]["finish_reason"],
             response_time=0.0,
             provider=LLMProvider.LOCAL.value
-        ) 
+        )

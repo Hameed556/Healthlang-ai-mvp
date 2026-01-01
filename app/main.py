@@ -15,7 +15,8 @@ from prometheus_client import make_asgi_app
 from app.config import settings
 from app.core.exceptions import HealthLangException
 from app.utils.logger import setup_logging, get_logger
-from app.api.routes import health, query, translation
+from app.api.routes import health, query, translation, auth
+from app.api.routes import chat as chat_routes
 from app.api.middleware.cors import setup_cors
 from app.api.middleware.logging import setup_logging_middleware
 from app.api.middleware.rate_limiting import setup_rate_limiting
@@ -37,13 +38,29 @@ async def lifespan(app: FastAPI):
 
     logger.info("Starting HealthLang AI MVP application...")
 
+    # Initialize database
+    try:
+        from app.database import init_db, check_database_connection
+        logger.info("Checking database connection...")
+        if check_database_connection():
+            logger.info("Initializing database tables...")
+            init_db()
+            logger.info("Database initialized successfully")
+        else:
+            logger.warning(
+                "Database connection failed, continuing without database"
+            )
+    except Exception as e:
+        logger.error(f"Database initialization failed: {e}")
 
     try:
         # Initialize workflow (non-fatal; query route lazily creates one)
         try:
             logger.info("Initializing HealthLang workflow...")
+            global workflow
             workflow = HealthLangWorkflow()
             await workflow.initialize()
+            app.state.workflow = workflow  # Store in app.state for route access
             logger.info("Workflow initialized successfully")
         except Exception as e:
             logger.error(f"Workflow initialization failed (continuing): {e}")
@@ -92,7 +109,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.APP_NAME,
     description=(
-        "English-first medical Q&A system with XAI/Groq LLMs, MCP tools, "
+        "English-first medical Q&A system with Groq LLMs, MCP tools, "
         "and optional RAG (translate endpoints preserved for future voice "
         "features)"
     ),
@@ -160,12 +177,22 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # Include routers
-app.include_router(health.router, prefix="", tags=["health"])
+app.include_router(health.router)
 app.include_router(query.router, prefix="/api/v1", tags=["query"])
 app.include_router(
     translation.router,
     prefix="/api/v1/translate",
     tags=["translation"],
+)
+app.include_router(
+    auth.router,
+    prefix="/api/v1",
+    tags=["authentication"],
+)
+app.include_router(
+    chat_routes.router,
+    prefix="/api/v1",
+    tags=["chat"],
 )
 
 

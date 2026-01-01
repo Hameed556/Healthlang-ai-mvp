@@ -1,14 +1,12 @@
 """
 Tavily-powered general knowledge RAG service
 
-This service uses Tavily Search API with LangChain for real-time
-general knowledge queries. It combines search results with ChromaDB
-for enhanced context and reliable sources.
+This service uses Tavily Search API with LangChain for general knowledge queries. 
+It combines search results with ChromaDB for enhanced context and reliable sources.
 """
 
 import asyncio
 import logging
-import re
 from typing import Dict, Optional, Any
 
 from langchain_tavily import TavilySearch
@@ -94,9 +92,9 @@ class TavilyKnowledgeService:
             )
             self.tavily_search = None
     
-    def _is_general_knowledge_query(self, query: str) -> bool:
+    async def _is_general_knowledge_query(self, query: str) -> bool:
         """
-        Detect if a query requires general knowledge lookup
+        Use LLM to detect if a query is general knowledge vs medical
         
         Args:
             query: User query to analyze
@@ -104,44 +102,69 @@ class TavilyKnowledgeService:
         Returns:
             bool: True if query needs general knowledge search
         """
-        query_lower = query.lower().strip()
+        try:
+            # Use LLMClient with LLMRequest for consistency
+            from app.services.medical.llm_client import LLMClient, LLMRequest
+            
+            llm_client = LLMClient()
+            
+            system_prompt = """You are a query classifier. Determine if the given query is asking for GENERAL KNOWLEDGE or MEDICAL knowledge.
+
+GENERAL knowledge includes:
+- Current events, news, politics, sports, entertainment
+- Historical facts and dates
+- Geography, capitals, populations
+- Technology, science (non-medical)
+- Definitions of non-medical terms
+- "Who is", "What is" questions about non-medical topics
+
+MEDICAL knowledge includes:
+- Symptoms, diseases, treatments, medications
+- Health advice, medical conditions
+- Anything related to doctors, hospitals, medical care
+
+Respond with ONLY one word: GENERAL or MEDICAL"""
+            
+            request = LLMRequest(
+                prompt=f"Query: {query}\n\nClassify this query:",
+                system_prompt=system_prompt,
+                max_tokens=10,
+                temperature=0.1
+            )
+            
+            response = await llm_client.generate(request)
+            classification = response.content.strip().upper()
+            
+            is_general = classification == "GENERAL"
+            logger.info(
+                f"LLM classified '{query}' as: {classification} "
+                f"-> general: {is_general}"
+            )
+            return is_general
+            
+        except Exception as e:
+            logger.error(f"Error in LLM classification: {e}")
+            # Minimal fallback
+            return self._fallback_classification(query)
+    
+    def _fallback_classification(self, query: str) -> bool:
+        """
+        Minimal fallback classification when LLM fails.
         
-        # Patterns that indicate general knowledge queries
-        knowledge_patterns = [
-            r'\b(who is|who was|who are)\b',
-            r'\b(what is|what are|what was|what were)\b',
-            r'\b(when did|when was|when were|when do)\b',
-            r'\b(where is|where are|where was|where were)\b',
-            r'\b(why did|why do|why is|why are)\b',
-            r'\b(how does|how do|how did|how to)\b',
-            r'\b(tell me about|explain|describe)\b',
-            r'\b(current|latest|recent|today|now)\b.*'
-            r'\b(president|leader|ceo|news|events)\b',
-            r'\b(facts about|information about|details about)\b',
-            r'\b(capital of|population of|history of)\b',
-            r'\b(definition of|meaning of)\b'
-        ]
+        Args:
+            query: User query
+            
+        Returns:
+            bool: True if appears to be general knowledge
+        """
+        query_lower = query.lower()
         
-        # Check if query matches knowledge patterns
-        for pattern in knowledge_patterns:
-            if re.search(pattern, query_lower):
-                return True
+        # Check for obvious medical terms
+        medical_terms = ['symptom', 'disease', 'treatment', 'medication', 'doctor', 'hospital', 'pain']
+        is_medical = any(term in query_lower for term in medical_terms)
         
-        # Topics that typically require general knowledge
-        knowledge_topics = [
-            'president', 'politics', 'government', 'election', 'country',
-            'capital', 'history', 'biography', 'celebrity', 'company',
-            'technology', 'science', 'geography', 'culture', 'sports',
-            'entertainment', 'economics', 'finance', 'current events',
-            'news', 'world', 'population', 'facts', 'statistics'
-        ]
-        
-        # Check if query contains knowledge topics
-        for topic in knowledge_topics:
-            if topic in query_lower:
-                return True
-        
-        return False
+        logger.info(f"Fallback classification for '{query}': general={not is_medical}")
+        return not is_medical
     
     async def retrieve_knowledge(self, query: str) -> Optional[Dict[str, Any]]:
         """
@@ -153,12 +176,6 @@ class TavilyKnowledgeService:
         Returns:
             Dict with search results and metadata, or None if not applicable
         """
-        if not self._is_general_knowledge_query(query):
-            logger.debug(
-                f"Query '{query}' not identified as general knowledge"
-            )
-            return None
-        
         if not self.tavily_search:
             logger.warning("Tavily search not available")
             return None
@@ -221,7 +238,10 @@ class TavilyKnowledgeService:
             # Cache the result
             await self._cache_result(query, knowledge_result)
             
-            logger.info(f"Retrieved {len(knowledge_result['sources'])} results from Tavily")
+            logger.info(
+                f"Retrieved {len(knowledge_result['sources'])} "
+                f"results from Tavily"
+            )
             return knowledge_result
             
         except Exception as e:
@@ -244,7 +264,9 @@ class TavilyKnowledgeService:
                 where={"cached": True}
             )
             
-            if results["distances"][0] and results["distances"][0][0] < 0.3:  # High similarity threshold
+            # High similarity threshold
+            if (results["distances"][0] and
+                    results["distances"][0][0] < 0.3):
                 # Return cached result
                 cached_data = results["metadatas"][0][0]
                 if "answer" in cached_data:
@@ -296,7 +318,10 @@ class TavilyKnowledgeService:
         stats = {
             "tavily_available": self.tavily_search is not None,
             "chroma_available": self.collection is not None,
-            "embedding_model": self.settings.EMBEDDING_MODEL if self.embedding_model else None
+            "embedding_model": (
+                self.settings.EMBEDDING_MODEL if self.embedding_model
+                else None
+            )
         }
         
         if self.collection:

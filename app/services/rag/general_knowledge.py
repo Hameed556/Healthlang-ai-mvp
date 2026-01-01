@@ -20,6 +20,7 @@ from app.services.rag.retriever import (
     RAGRetriever, RetrievalResponse
 )
 from app.services.rag.vector_store import Document
+from app.services.medical.llm_client import LLMClient, LLMRequest
 
 
 @dataclass
@@ -42,6 +43,7 @@ class GeneralKnowledgeRAG:
         """Initialize general knowledge RAG service."""
         self.rag_retriever = rag_retriever
         self.collection_name = "general_knowledge"
+        self.llm_client = LLMClient()
         
         # Configure reliable sources
         self.knowledge_sources = [
@@ -63,20 +65,10 @@ class GeneralKnowledgeRAG:
             ),
             # Add more sources as needed
         ]
-        
-        # General knowledge indicators
-        self.general_knowledge_indicators = {
-            "who", "what", "when", "where", "why", "how",
-            "president", "leader", "country", "capital", "population",
-            "history", "year", "date", "time", "current", "latest",
-            "news", "event", "happened", "facts", "information",
-            "explain", "define", "meaning", "definition",
-            "tell me about", "information about", "facts about",
-        }
     
-    def _is_general_knowledge_query(self, query: str) -> bool:
+    async def _is_general_knowledge_query(self, query: str) -> bool:
         """
-        Detect if a query is asking for general knowledge.
+        Detect if a query is asking for general knowledge using LLM.
         
         Args:
             query: User query
@@ -84,26 +76,69 @@ class GeneralKnowledgeRAG:
         Returns:
             True if query is asking for general knowledge
         """
+        try:
+            system_prompt = """You are a query classifier. Determine if the given query is asking for GENERAL KNOWLEDGE (facts about world events, people, places, current affairs, definitions, history, geography, politics, etc.) or NOT GENERAL KNOWLEDGE.
+
+General knowledge queries include:
+- Questions about current events, news, leaders, countries
+- Historical facts and dates
+- Definitions and explanations of non-medical terms
+- Geography, capitals, populations
+- General world facts and information
+- "Who is", "What is", "When did", "Where is" questions about non-medical topics
+
+NOT general knowledge:
+- Medical/health questions
+- Personal advice
+- Mathematical calculations
+- Programming/technical questions
+- Casual conversation
+
+Respond with ONLY one word: GENERAL or NOT_GENERAL"""
+            
+            request = LLMRequest(
+                prompt=f"Query: {query}\n\nClassify this query:",
+                system_prompt=system_prompt,
+                max_tokens=10,
+                temperature=0.1
+            )
+            
+            response = await self.llm_client.generate(request)
+            classification = response.content.strip().upper()
+            
+            is_general = "GENERAL" in classification and "NOT_GENERAL" not in classification
+            logger.info(f"LLM classified query '{query}' as {'GENERAL' if is_general else 'NOT_GENERAL'} knowledge")
+            
+            return is_general
+            
+        except Exception as e:
+            logger.warning(f"LLM classification failed, using keyword fallback: {e}")
+            # Fallback to simple keyword detection
+            return self._is_general_knowledge_query_fallback(query)
+    
+    def _is_general_knowledge_query_fallback(self, query: str) -> bool:
+        """
+        Fallback keyword-based detection for general knowledge queries.
+        
+        Args:
+            query: User query
+            
+        Returns:
+            True if query appears to be general knowledge
+        """
         query_lower = query.lower()
         
-        # Check for general knowledge question patterns
-        question_patterns = [
-            r'\b(who is|what is|when did|where is|why did|how does)\b',
-            r'\b(tell me about|information about|facts about)\b',
-            r'\b(current|latest|recent)\s+(president|leader|news|events?)\b',
-            r'\b(define|explain|meaning of)\b',
-            r'\b(capital of|population of|history of)\b',
+        # Simple patterns for fallback
+        general_patterns = [
+            r'\b(who is|what is|when did|where is)\b',
+            r'\b(president|capital|population|leader)\b',
+            r'\b(current|latest|news)\b',
         ]
         
-        for pattern in question_patterns:
+        for pattern in general_patterns:
             if re.search(pattern, query_lower):
                 return True
         
-        # Check for general knowledge indicators
-        words = set(query_lower.split())
-        if words.intersection(self.general_knowledge_indicators):
-            return True
-            
         return False
     
     async def retrieve_knowledge(self, query: str) -> Optional[RetrievalResponse]:
@@ -116,7 +151,7 @@ class GeneralKnowledgeRAG:
         Returns:
             RetrievalResponse with general knowledge or None if not applicable
         """
-        if not self._is_general_knowledge_query(query):
+        if not await self._is_general_knowledge_query(query):
             logger.info(f"Query '{query}' not identified as general knowledge")
             return None
             

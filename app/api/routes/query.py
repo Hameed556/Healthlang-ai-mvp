@@ -9,9 +9,13 @@ from typing import Dict, Any, Optional
 from fastapi import APIRouter, Request, HTTPException, Depends
 from pydantic import BaseModel, Field, field_validator
 from prometheus_client import Counter, Histogram, Gauge
+from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.core.workflow import HealthLangWorkflow
+from app.database import get_db
+from app.services.query_service import QueryService
+from app.models.database_models import User
 
 from app.utils.logger import get_logger
 from app.utils.metrics import record_query_metrics
@@ -96,23 +100,43 @@ async def get_workflow() -> HealthLangWorkflow:
     return workflow
 
 
+async def get_current_user_optional(
+    db: Session = Depends(get_db),
+) -> Optional[User]:
+    """
+    Optional user dependency - returns None for anonymous requests.
+    This is a simplified version - in production you'd check auth tokens.
+    """
+    # For now, return None (anonymous user)
+    # TODO: Check for Bearer token and validate if present
+    return None
+
+
 @router.post("/query", response_model=MedicalQueryResponse)
 async def process_medical_query(
     request: MedicalQueryRequest,
     http_request: Request,
+    db: Session = Depends(get_db),
     workflow: HealthLangWorkflow = Depends(get_workflow),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ) -> MedicalQueryResponse:
     """
     Process a medical query (English-only chat flow).
 
-    This endpoint now accepts and responds in English only. The chatbot does not
-    auto-translate. Translation endpoints remain available under /api/v1/translate/*
-    for future TTS/STT features but are not used by the chat flow.
+    This endpoint now accepts and responds in English only. 
+    The chatbot does not auto-translate. Translation endpoints 
+    remain available under /api/v1/translate/* for future TTS/STT 
+    features but are not used by the chat flow.
+    
+    Supports both authenticated and anonymous users. If authenticated,
+    query history is saved with the user's account.
     
     Args:
         request: The medical query request
         http_request: The HTTP request object
+        db: Database session
         workflow: The LangGraph workflow
+        current_user: Optional authenticated user
         
     Returns:
         Medical query response with answer and metadata
@@ -155,6 +179,34 @@ async def process_medical_query(
 
         logger.info(f"Query processed (ID: {request_id}) - Success: {result['success']}")
 
+        # Save query history to database
+        try:
+            # Extract sources from metadata if available
+            sources = []
+            if "rag_sources" in result.get("metadata", {}):
+                sources = result["metadata"]["rag_sources"]
+            elif "sources" in result.get("metadata", {}):
+                sources = result["metadata"]["sources"]
+            
+            # Save to database
+            await QueryService.create_query_record(
+                db=db,
+                user_id=current_user.id if current_user else None,
+                query_text=request.text,
+                response_text=result["response"],
+                processing_time=response.processing_time,
+                success=result["success"],
+                sources=sources,
+                metadata=result.get("metadata", {}),
+                error=result.get("error"),
+                original_language="en",
+                target_language="en",
+            )
+            logger.debug(f"Saved query history for request: {request_id}")
+        except Exception as db_error:
+            # Don't fail the request if database logging fails
+            logger.error(f"Failed to save query history: {db_error}")
+
         from fastapi.responses import JSONResponse
         return JSONResponse(
             content=response.model_dump(),
@@ -189,6 +241,26 @@ async def process_medical_query(
             success=False,
             error=str(e),
         )
+        
+        # Save failed query to database
+        try:
+            await QueryService.create_query_record(
+                db=db,
+                user_id=current_user.id if current_user else None,
+                query_text=request.text,
+                response_text=err_response.response,
+                processing_time=err_response.processing_time,
+                success=False,
+                sources=[],
+                metadata={"original_language": "en", "translation_used": False},
+                error=str(e),
+                original_language="en",
+                target_language="en",
+            )
+            logger.debug(f"Saved failed query history for request: {request_id}")
+        except Exception as db_error:
+            logger.error(f"Failed to save error query history: {db_error}")
+        
         from fastapi.responses import JSONResponse
         return JSONResponse(
             content=err_response.model_dump(),

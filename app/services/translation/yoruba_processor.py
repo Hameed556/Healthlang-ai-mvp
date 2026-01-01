@@ -9,6 +9,7 @@ from datetime import datetime
 from app.config import settings
 from app.core.exceptions import TranslationError
 from app.utils.logger import get_logger
+from app.services.medical.llm_client import LLMClient, LLMRequest
 
 logger = get_logger(__name__)
 
@@ -20,6 +21,7 @@ class YorubaProcessor:
     
     def __init__(self):
         self._initialized = False
+        self.llm_client = LLMClient()
         self.yoruba_characters = self._load_yoruba_characters()
         self.medical_terms = self._load_medical_terms()
         self.normalization_rules = self._load_normalization_rules()
@@ -89,7 +91,7 @@ class YorubaProcessor:
     
     async def postprocess(self, text: str) -> str:
         """
-        Postprocess translated text to improve Yoruba quality
+        Postprocess translated text to improve Yoruba quality using LLM
         
         Args:
             text: Translated text to postprocess
@@ -106,17 +108,17 @@ class YorubaProcessor:
         try:
             logger.debug(f"Postprocessing Yoruba text: {text[:100]}...")
             
-            # Apply postprocessing steps
+            # Apply basic postprocessing steps first
             processed_text = text
             
             # 1. Restore Yoruba characters
             processed_text = self._restore_yoruba_characters(processed_text)
             
-            # 2. Apply Yoruba grammar rules
-            processed_text = self._apply_grammar_rules(processed_text)
-            
-            # 3. Improve medical terminology
+            # 2. Improve medical terminology
             processed_text = self._improve_medical_terms(processed_text)
+            
+            # 3. Use LLM to improve Yoruba quality
+            processed_text = await self._llm_improve_yoruba(processed_text)
             
             # 4. Final formatting
             processed_text = self._final_formatting(processed_text)
@@ -126,7 +128,8 @@ class YorubaProcessor:
             
         except Exception as e:
             logger.error(f"Yoruba postprocessing failed: {e}")
-            raise TranslationError(f"Failed to postprocess Yoruba text: {e}")
+            # Return basic processing on error
+            return self._basic_postprocess(text)
     
     async def tokenize(self, text: str) -> List[str]:
         """
@@ -221,24 +224,74 @@ class YorubaProcessor:
     
     def _restore_yoruba_characters(self, text: str) -> str:
         """Restore proper Yoruba characters"""
-        # This would be more sophisticated in production
-        # For MVP, we'll do basic character restoration
+        # Ensure consistent Yoruba character forms
+        for old, new in self.yoruba_characters.items():
+            text = text.replace(old, new)
         return text
     
-    def _apply_grammar_rules(self, text: str) -> str:
-        """Apply Yoruba grammar rules"""
-        # Basic grammar corrections for MVP
-        # In production, this would use a proper grammar checker
+    async def _llm_improve_yoruba(self, text: str) -> str:
+        """
+        Use LLM to improve Yoruba text quality, grammar, and naturalness.
         
-        # Ensure proper verb forms
-        text = re.sub(r'\b(ṣe)\s+', r'ṣe ', text)
-        text = re.sub(r'\b(wa)\s+', r'wa ', text)
+        Args:
+            text: Yoruba text to improve
+            
+        Returns:
+            Improved Yoruba text
+        """
+        try:
+            system_prompt = """You are a Yoruba language expert specializing in Nigerian Yoruba.
+Your task is to improve Yoruba text by:
+1. Correcting grammar and ensuring proper Yoruba syntax
+2. Using natural, idiomatic Yoruba expressions
+3. Ensuring proper use of Yoruba characters (ẹ, ọ, ṣ)
+4. Making the text sound natural and fluent
+5. Preserving the original meaning exactly
+
+Provide ONLY the improved Yoruba text without explanations."""
+            
+            prompt = f"""Improve this Yoruba text to make it more natural and grammatically correct:
+
+{text}
+
+Provide the improved version:"""
+            
+            request = LLMRequest(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                max_tokens=500,
+                temperature=0.2  # Slightly higher for natural variation
+            )
+            
+            response = await self.llm_client.generate(request)
+            improved_text = response.content.strip()
+            
+            # Validate the improved text has content
+            if improved_text and len(improved_text) >= len(text) * 0.5:
+                logger.debug(f"LLM improved Yoruba text successfully")
+                return improved_text
+            else:
+                logger.warning("LLM improvement resulted in shorter text, keeping original")
+                return text
+                
+        except Exception as e:
+            logger.warning(f"LLM improvement failed, using original text: {e}")
+            return text
+    
+    def _basic_postprocess(self, text: str) -> str:
+        """
+        Basic postprocessing fallback when LLM fails.
         
-        # Ensure proper pronoun forms
-        text = re.sub(r'\b(o)\s+', r'o ', text)
-        text = re.sub(r'\b(ẹ)\s+', r'ẹ ', text)
-        
-        return text
+        Args:
+            text: Text to process
+            
+        Returns:
+            Processed text
+        """
+        processed = self._restore_yoruba_characters(text)
+        processed = self._improve_medical_terms(processed)
+        processed = self._final_formatting(processed)
+        return processed
     
     def _improve_medical_terms(self, text: str) -> str:
         """Improve medical terminology in Yoruba"""
@@ -299,7 +352,7 @@ class YorubaProcessor:
     
     async def validate_yoruba_text(self, text: str) -> Dict[str, Any]:
         """
-        Validate Yoruba text quality
+        Validate Yoruba text quality using LLM-based analysis.
         
         Args:
             text: Text to validate
@@ -311,55 +364,120 @@ class YorubaProcessor:
             await self.initialize()
         
         try:
-            validation_result = {
-                "is_valid": True,
-                "score": 0.0,
-                "issues": [],
-                "suggestions": [],
-                "timestamp": datetime.now().isoformat(),
-            }
-            
-            # Check for Yoruba characters
-            yoruba_chars = len(re.findall(r'[ọọẹẹṣṣ]', text))
-            if yoruba_chars == 0:
-                validation_result["issues"].append("No Yoruba characters found")
-                validation_result["score"] -= 0.3
-            
-            # Check for common Yoruba words
-            yoruba_words = ['o', 'ni', 'ṣe', 'wa', 'ko', 'ti', 'bawo', 'dara']
-            found_words = sum(1 for word in yoruba_words if word in text.lower())
-            if found_words == 0:
-                validation_result["issues"].append("No common Yoruba words found")
-                validation_result["score"] -= 0.2
-            
-            # Check text length
-            if len(text) < 5:
-                validation_result["issues"].append("Text too short")
-                validation_result["score"] -= 0.1
-            
-            # Calculate final score
-            validation_result["score"] = max(0.0, 1.0 + validation_result["score"])
-            
-            if validation_result["score"] < 0.5:
-                validation_result["is_valid"] = False
-            
+            # Use LLM for intelligent validation
+            validation_result = await self._llm_validate_yoruba(text)
             return validation_result
             
         except Exception as e:
-            logger.error(f"Yoruba text validation failed: {e}")
-            return {
-                "is_valid": False,
-                "score": 0.0,
-                "issues": [f"Validation error: {e}"],
-                "suggestions": [],
-                "timestamp": datetime.now().isoformat(),
-            }
+            logger.error(f"LLM validation failed, using fallback: {e}")
+            return self._basic_validation(text)
+    
+    async def _llm_validate_yoruba(self, text: str) -> Dict[str, Any]:
+        """
+        Use LLM to validate Yoruba text quality.
+        
+        Args:
+            text: Text to validate
+            
+        Returns:
+            Validation results with score and suggestions
+        """
+        try:
+            system_prompt = """You are a Yoruba language expert. Evaluate the quality of Yoruba text.
+Assess:
+1. Grammar correctness
+2. Natural fluency
+3. Proper use of Yoruba characters (ẹ, ọ, ṣ)
+4. Idiomatic expressions
+5. Overall quality
+
+Provide a score from 0.0 to 1.0 and list any issues.
+Respond in JSON format:
+{
+  "score": 0.0-1.0,
+  "is_valid": true/false,
+  "issues": ["issue1", "issue2"],
+  "suggestions": ["suggestion1", "suggestion2"]
+}"""
+            
+            prompt = f"Validate this Yoruba text:\n\n{text}"
+            
+            request = LLMRequest(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                max_tokens=300,
+                temperature=0.1
+            )
+            
+            response = await self.llm_client.generate(request)
+            
+            # Try to parse JSON response
+            import json
+            try:
+                result = json.loads(response.content.strip())
+                result["timestamp"] = datetime.now().isoformat()
+                result["method"] = "llm"
+                return result
+            except json.JSONDecodeError:
+                # Fallback if JSON parsing fails
+                logger.warning("LLM response not valid JSON, using basic validation")
+                return self._basic_validation(text)
+                
+        except Exception as e:
+            logger.error(f"LLM validation failed: {e}")
+            return self._basic_validation(text)
+    
+    def _basic_validation(self, text: str) -> Dict[str, Any]:
+        """
+        Basic validation fallback using pattern matching.
+        
+        Args:
+            text: Text to validate
+            
+        Returns:
+            Validation results
+        """
+        validation_result = {
+            "is_valid": True,
+            "score": 0.0,
+            "issues": [],
+            "suggestions": [],
+            "method": "basic",
+            "timestamp": datetime.now().isoformat(),
+        }
+        
+        # Check for Yoruba characters
+        yoruba_chars = len(re.findall(r'[ọọẹẹṣṣ]', text))
+        if yoruba_chars == 0:
+            validation_result["issues"].append("No Yoruba characters found")
+            validation_result["score"] -= 0.3
+        
+        # Check for common Yoruba words
+        yoruba_words = ['o', 'ni', 'ṣe', 'wa', 'ko', 'ti', 'bawo', 'dara']
+        found_words = sum(1 for word in yoruba_words if word in text.lower())
+        if found_words == 0:
+            validation_result["issues"].append("No common Yoruba words found")
+            validation_result["score"] -= 0.2
+        
+        # Check text length
+        if len(text) < 5:
+            validation_result["issues"].append("Text too short")
+            validation_result["score"] -= 0.1
+        
+        # Calculate final score
+        validation_result["score"] = max(0.0, 1.0 + validation_result["score"])
+        
+        if validation_result["score"] < 0.5:
+            validation_result["is_valid"] = False
+        
+        return validation_result
     
     async def health_check(self) -> Dict[str, Any]:
         """Perform health check on Yoruba processor"""
         health_status = {
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
+            "llm_available": self.llm_client is not None,
             "components": {
                 "yoruba_characters": len(self.yoruba_characters),
                 "medical_terms": len(self.medical_terms),

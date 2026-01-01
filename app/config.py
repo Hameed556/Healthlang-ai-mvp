@@ -28,17 +28,9 @@ class Settings(BaseSettings):
         default="test_api_key_for_development",
         env="GROQ_API_KEY",
     )
-    XAI_GROK_API_KEY: str = Field(
-        default="test_api_key_for_development",
-        env="XAI_GROK_API_KEY",
-    )
     GROQ_BASE_URL: str = Field(
         default="https://api.groq.com/openai/v1",
         env="GROQ_BASE_URL",
-    )
-    XAI_GROK_BASE_URL: str = Field(
-        default="https://api.x.ai/v1",
-        env="XAI_GROK_BASE_URL",
     )
     LOCAL_MODEL_ENDPOINT: Optional[str] = Field(
         default=None,
@@ -108,9 +100,7 @@ class Settings(BaseSettings):
 
     @field_validator(
         "GROQ_API_KEY",
-        "XAI_GROK_API_KEY",
         "GROQ_BASE_URL",
-        "XAI_GROK_BASE_URL",
         "LOCAL_MODEL_ENDPOINT",
         "GROQ_MODEL",
         "MEDICAL_MODEL_NAME",
@@ -134,10 +124,47 @@ class Settings(BaseSettings):
         return v
     
     # Database Configuration
-    DATABASE_URL: str = Field(
-        default="sqlite:///./healthlang.db",
+    # Development/Local Database
+    DEV_DATABASE_URL: str = Field(
+        default="postgresql://healthlang:Abdulhameed123@localhost:5432/healthlang",
+        env="DEV_DATABASE_URL",
+    )
+    
+    # Production Database (from Render PostgreSQL)
+    PROD_DATABASE_URL: str = Field(
+        default="",
+        env="PROD_DATABASE_URL",
+    )
+    
+    # Legacy single DATABASE_URL (for backward compatibility)
+    DATABASE_URL: Optional[str] = Field(
+        default=None,
         env="DATABASE_URL",
     )
+    
+    @property
+    def get_database_url(self) -> str:
+        """
+        Returns the appropriate database URL based on environment.
+        Priority: DATABASE_URL > PROD_DATABASE_URL (if production) > DEV_DATABASE_URL
+        """
+        # If DATABASE_URL is explicitly set, use it (backward compatibility)
+        if self.DATABASE_URL:
+            return self.DATABASE_URL
+        
+        # Otherwise, use environment-specific URL
+        if self.ENVIRONMENT.lower() == "production":
+            if self.PROD_DATABASE_URL:
+                return self.PROD_DATABASE_URL
+            else:
+                logger.warning(
+                    "Production environment but PROD_DATABASE_URL not set. "
+                    "Using DEV_DATABASE_URL."
+                )
+                return self.DEV_DATABASE_URL
+        else:
+            return self.DEV_DATABASE_URL
+    
     REDIS_URL: str = Field(default="redis://localhost:6379/0", env="REDIS_URL")
     CHROMA_DB_PATH: str = Field(
         default="./data/medical_knowledge/embeddings",
@@ -173,11 +200,11 @@ class Settings(BaseSettings):
     
     # Medical Analysis Configuration
     MEDICAL_MODEL_NAME: str = Field(
-        default="grok-beta",
+        default="meta-llama/llama-4-maverick-17b-128e-instruct",
         env="MEDICAL_MODEL_NAME",
     )
     MEDICAL_MODEL_PROVIDER: str = Field(
-        default="xai",
+        default="groq",
         env="MEDICAL_MODEL_PROVIDER",
     )
     # Reduced for faster responses

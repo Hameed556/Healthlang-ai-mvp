@@ -6,12 +6,10 @@ import asyncio
 from typing import Dict, Any, Optional
 from datetime import datetime
 
-from langchain_groq import ChatGroq
-from langchain.schema import HumanMessage, SystemMessage
-
 from app.config import settings
 from app.core.exceptions import TranslationError, LanguageNotSupportedError
 from app.utils.logger import get_logger
+from app.services.medical.llm_client import LLMClient, LLMRequest
 from .language_detector import LanguageDetector
 from .yoruba_processor import YorubaProcessor
 
@@ -26,7 +24,7 @@ class TranslationService:
     def __init__(self):
         self.language_detector: Optional[LanguageDetector] = None
         self.yoruba_processor: Optional[YorubaProcessor] = None
-        self.llm: Optional[ChatGroq] = None
+        self.llm_client: Optional[LLMClient] = None
         self._initialized = False
     
     async def initialize(self) -> None:
@@ -37,14 +35,9 @@ class TranslationService:
         logger.info("Initializing TranslationService...")
         
         try:
-            # Initialize LLaMA-4 Maverick for translation
-            self.llm = ChatGroq(
-                model=settings.TRANSLATION_MODEL,
-                groq_api_key=settings.GROQ_API_KEY,
-                temperature=0.1,  # Low temperature for consistent translations
-                max_tokens=2048
-            )
-            logger.info("LLaMA-4 Maverick translation model initialized")
+            # Initialize LLM client for translation
+            self.llm_client = LLMClient()
+            logger.info("LLM client initialized for translation")
             
             # Initialize language detector
             self.language_detector = LanguageDetector()
@@ -244,51 +237,34 @@ class TranslationService:
         target_lang: str,
     ) -> str:
         """
-        Translate using LLaMA-4 Maverick model via Groq API
+        Translate using LLM client (Groq/LLaMA-4 Maverick)
         """
         try:
-            # Prepare the prompt for translation
+            # Prepare translation prompt
             if source_lang == "yo" and target_lang == "en":
-                prompt = f"""
-Translate the following Yoruba text to English. Provide only the English translation without any explanations:
-
-Yoruba: {text}
-English:"""
+                system_prompt = """You are a professional translator specializing in Yoruba to English translation. 
+Provide accurate, natural translations that preserve the meaning and context.
+Provide ONLY the English translation without explanations or additional text."""
+                prompt = f"Translate this Yoruba text to English:\n\n{text}"
             else:
-                prompt = f"""
-Translate the following English text to Yoruba. Provide only the Yoruba translation without any explanations:
-
-English: {text}
-Yoruba:"""
+                system_prompt = """You are a professional translator specializing in English to Yoruba translation.
+Provide accurate, natural translations that preserve the meaning and context.
+Provide ONLY the Yoruba translation without explanations or additional text."""
+                prompt = f"Translate this English text to Yoruba:\n\n{text}"
             
-            # Call Groq API with LLaMA-4 Maverick
-            import httpx
-            from app.config import settings
+            # Use LLMClient for translation
+            request = LLMRequest(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                max_tokens=1000,
+                temperature=0.1  # Low temperature for consistent translations
+            )
             
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{settings.GROQ_BASE_URL}/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {settings.GROQ_API_KEY}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "model": settings.TRANSLATION_MODEL,
-                        "messages": [
-                            {"role": "user", "content": prompt}
-                        ],
-                        "temperature": 0.1,
-                        "max_tokens": 1000
-                    },
-                    timeout=30
-                )
-                
-                if response.status_code == 200:
-                    result = response.json()
-                    translated_text = result["choices"][0]["message"]["content"].strip()
-                    return translated_text
-                else:
-                    raise Exception(f"Translation API error: {response.status_code}")
+            response = await self.llm_client.generate(request)
+            translated_text = response.content.strip()
+            
+            logger.debug(f"Translation completed: {translated_text[:100]}...")
+            return translated_text
                     
         except Exception as e:
             logger.error(f"Translation service error: {e}")
@@ -363,6 +339,7 @@ Yoruba:"""
         health_status = {
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
+            "llm_client_available": self.llm_client is not None,
             "components": {},
         }
         

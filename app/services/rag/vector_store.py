@@ -110,8 +110,14 @@ class VectorStore:
         """Initialize ChromaDB client."""
         try:
             import chromadb
-            self.client = chromadb.EphemeralClient()
-            logger.info("ChromaDB EphemeralClient (in-memory) initialized successfully.")
+            import os
+            
+            # Use persistent client for data persistence
+            persist_dir = settings.CHROMA_PERSIST_DIRECTORY
+            os.makedirs(persist_dir, exist_ok=True)
+            
+            self.client = chromadb.PersistentClient(path=persist_dir)
+            logger.info(f"ChromaDB PersistentClient initialized at: {persist_dir}")
         except Exception as e:
             logger.error(f"ChromaDB initialization failed: {e}")
             raise VectorStoreError(self.store_type, f"ChromaDB initialization failed: {e}")
@@ -235,7 +241,7 @@ class VectorStore:
             if self.store_type == VectorStoreType.CHROMA:
                 inserted_ids = await self._insert_chroma_documents(documents, collection_name)
             else:
-                raise VectorStoreError(f"Document insertion not implemented for {self.store_type}")
+                raise VectorStoreError(f"Document insertion not implemented for {self.store_type}", self.store_type)
             
             insert_time = time.time() - start_time
             
@@ -247,7 +253,7 @@ class VectorStore:
             
         except Exception as e:
             logger.error(f"Document insertion failed: {e}")
-            raise VectorStoreError(f"Document insertion failed: {e}")
+            raise VectorStoreError(f"Document insertion failed: {e}", self.store_type)
     
     async def _insert_chroma_documents(
         self, 
@@ -277,7 +283,7 @@ class VectorStore:
                 else:
                     # If no embedding provided, we'll need to generate it
                     # This should be handled by the calling service
-                    raise VectorStoreError("Document embedding is required")
+                    raise VectorStoreError("Document embedding is required", self.store_type)
             
             # Insert into ChromaDB
             collection.add(
@@ -315,7 +321,7 @@ class VectorStore:
             if self.store_type == VectorStoreType.CHROMA:
                 results = await self._search_chroma(request)
             else:
-                raise VectorStoreError(f"Search not implemented for {self.store_type}")
+                raise VectorStoreError(f"Search not implemented for {self.store_type}", self.store_type)
             
             search_time = time.time() - start_time
             
@@ -340,7 +346,7 @@ class VectorStore:
             
         except Exception as e:
             logger.error(f"Vector search failed: {e}")
-            raise VectorStoreError(f"Vector search failed: {e}")
+            raise VectorStoreError(f"Vector search failed: {e}", self.store_type)
     
     async def _search_chroma(self, request: SearchRequest) -> List[SearchResult]:
         """Search ChromaDB collection."""
@@ -395,7 +401,7 @@ class VectorStore:
             
         except Exception as e:
             logger.error(f"ChromaDB search failed: {e}")
-            raise VectorStoreError(f"ChromaDB search failed: {e}")
+            raise VectorStoreError(f"ChromaDB search failed: {e}", self.store_type)
     
     async def delete_documents(
         self, 

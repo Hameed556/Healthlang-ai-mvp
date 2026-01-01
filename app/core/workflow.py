@@ -117,8 +117,87 @@ class HealthLangWorkflow:
         """No-op: Responses remain in English."""
         return response
     
-    def _is_medical_query(self, query: str) -> bool:
-        """Detect if a query is medical based ONLY on the original query."""
+    async def _is_medical_query(self, query: str) -> bool:
+        """
+        Use Groq LLM to accurately detect if a query is medical-related.
+        Falls back to keyword matching if LLM classification fails.
+        
+        Args:
+            query: The user's query to classify
+            
+        Returns:
+            bool: True if the query is medical/health-related, False otherwise
+        """
+        try:
+            # Classification prompt for the LLM
+            classification_prompt = (
+                "You are a medical query classifier. Your task is to determine "
+                "if a question requires medical or health expertise.\n\n"
+                "Medical/Health queries include:\n"
+                "- Symptoms, diseases, conditions, syndromes\n"
+                "- Treatments, medications, therapies, procedures\n"
+                "- Diagnoses, medical tests, lab results\n"
+                "- Anatomy, physiology, biology related to health\n"
+                "- Mental health, psychology, psychiatry\n"
+                "- Nutrition for medical conditions, dietary health\n"
+                "- Pregnancy, childbirth, pediatric health\n"
+                "- Medical advice, health concerns, wellness\n\n"
+                "Non-medical queries include:\n"
+                "- Greetings, social pleasantries, casual conversation\n"
+                "- Jokes, entertainment, stories\n"
+                "- General knowledge (current events, sports, politics, history)\n"
+                "- Technology, business, education (non-health)\n"
+                "- Personal questions about the AI itself\n\n"
+                f'Question: "{query}"\n\n'
+                "Respond with ONLY \"MEDICAL\" or \"NON-MEDICAL\" - nothing else."
+            )
+            
+            # Use Groq via LLM client
+            from app.services.medical.llm_client import LLMClient, LLMProvider
+            
+            llm_client = LLMClient()
+            
+            # Use Groq only
+            if (hasattr(llm_client, 'clients') and
+                    LLMProvider.GROQ in llm_client.clients):
+                groq_client = llm_client.clients[LLMProvider.GROQ]
+                response = await groq_client.chat.completions.create(
+                    model=settings.GROQ_MODEL,
+                    messages=[
+                        {"role": "user", "content": classification_prompt}
+                    ],
+                    max_tokens=10,
+                    temperature=0.0
+                )
+                classification = response.choices[0].message.content.strip().upper()
+            else:
+                raise ValueError("Groq client not available")
+            
+            is_medical = classification == "MEDICAL"
+            logger.info(
+                f"Groq classified query as: {classification} "
+                f"(is_medical: {is_medical})"
+            )
+            return is_medical
+            
+        except Exception as e:
+            logger.warning(
+                f"Groq classification failed ({str(e)}), using fallback keyword matching"
+            )
+            # Fallback to keyword-based detection
+            return self._is_medical_query_keywords(query)
+    
+    def _is_medical_query_keywords(self, query: str) -> bool:
+        """
+        Fallback keyword-based medical query detection.
+        Used when LLM classification is unavailable.
+        
+        Args:
+            query: The user's query to classify
+            
+        Returns:
+            bool: True if the query appears medical-related based on keywords
+        """
         query_lower = query.lower().strip()
         
         # Non-medical query patterns (explicit exclusions)
@@ -170,29 +249,101 @@ class HealthLangWorkflow:
             indicator in query_lower for indicator in medical_indicators
         )
 
-    def _build_contextual_followup(
+    async def _build_contextual_followup(
         self,
         original_query: str,
         response: str,
     ) -> str:
-        """Generate a context-aware follow-up prompt.
+        """
+        Generate intelligent, context-aware follow-up using LLM.
+        Falls back to simple generic response if LLM fails.
 
-        Rules:
-        - Only generate medical follow-ups for medical queries
-        - One concise question that advances the conversation.
-        - Tailor to detected condition/intent (symptoms, diagnosis,
-          lifestyle, meds, labs, region).
-        - Offer Pidgin ONLY if the user asked for it (contains 'pidgin').
+        Args:
+            original_query: The user's original question
+            response: The AI's response to analyze for context
+
+        Returns:
+            str: Natural, contextual follow-up question
         """
         # First check if this is actually a medical query
-        if not self._is_medical_query(original_query):
+        if not await self._is_medical_query(original_query):
             # For non-medical queries, provide general assistance follow-up
             return "How else can I help you today?"
-            
+
+        try:
+            # Build intelligent follow-up prompt for LLM
+            followup_prompt = (
+                "You are a medical assistant generating natural follow-up "
+                "questions.\n\n"
+                f"User asked: \"{original_query}\"\n\n"
+                f"Your response was: \"{response[:500]}...\"\n\n"
+                "Based on this conversation context, generate ONE natural, "
+                "helpful follow-up question that:\n"
+                "1. Advances the conversation logically\n"
+                "2. Addresses potential next steps (symptoms checklist, "
+                "tests, lifestyle plan, medication info, lab interpretation, "
+                "pregnancy/child considerations, regional resources)\n"
+                "3. Is personalized to the specific condition/topic discussed\n"
+                "4. Sounds natural and conversational\n"
+                "5. If user mentioned 'pidgin' or Nigerian context, offer "
+                "translation\n\n"
+                "Return ONLY the follow-up question, nothing else. "
+                "Keep it under 30 words."
+            )
+
+            # Use Groq LLM client
+            from app.services.medical.llm_client import LLMClient, LLMProvider
+
+            llm_client = LLMClient()
+
+            # Get intelligent follow-up from Groq
+            if (hasattr(llm_client, 'clients') and
+                    LLMProvider.GROQ in llm_client.clients):
+                groq_client = llm_client.clients[LLMProvider.GROQ]
+                llm_response = await groq_client.chat.completions.create(
+                    model=settings.GROQ_MODEL,
+                    messages=[
+                        {"role": "user", "content": followup_prompt}
+                    ],
+                    max_tokens=50,
+                    temperature=0.7  # Allow creativity for natural language
+                )
+                followup = llm_response.choices[0].message.content.strip()
+            else:
+                raise ValueError("Groq client not available")
+
+            # Clean up the follow-up (remove quotes if LLM added them)
+            followup = followup.strip('"\'')
+
+            logger.info(f"Generated contextual follow-up: {followup}")
+            return followup
+
+        except Exception as e:
+            logger.warning(
+                f"LLM follow-up generation failed ({str(e)}), "
+                "using fallback"
+            )
+            # Fallback to simple keyword-based follow-up
+            return self._build_keyword_followup(original_query, response)
+
+    def _build_keyword_followup(
+        self, original_query: str, response: str
+    ) -> str:
+        """
+        Fallback keyword-based follow-up generation.
+        Used when LLM-based generation fails.
+
+        Args:
+            original_query: The user's original question
+            response: The AI's response
+
+        Returns:
+            str: Generic follow-up question
+        """
         oq = (original_query or "").lower()
         rsp = (response or "").lower()
 
-        # Simple topic extraction from query or response
+        # Simple topic extraction
         topics = [
             "diabetes", "hypertension", "asthma", "depression",
             "anxiety", "cholesterol", "obesity", "malaria",
@@ -202,10 +353,7 @@ class HealthLangWorkflow:
 
         # Intent detection via keywords
         def has(words):
-            return (
-                any(w in oq for w in words)
-                or any(w in rsp for w in words)
-            )
+            return any(w in oq for w in words) or any(w in rsp for w in words)
 
         is_symptoms = has(["symptom", "sign", "how do i know", "feel"])
         is_diagnosis = has([
@@ -218,75 +366,62 @@ class HealthLangWorkflow:
         ])
         is_medication = has([
             "drug", "med", "dose", "dosing", "insulin",
-            "metformin", "statin", "ace inhibitor",
-            "side effect", "interaction",
+            "metformin", "statin", "side effect", "interaction",
         ])
-        is_lab = has([
-            "lab", "result", "range", "units", "normal",
-            "abnormal",
-        ])
+        is_lab = has(["lab", "result", "range", "units", "normal"])
         is_preg_child = has([
-            "pregnan", "child", "kid", "baby", "pediatric",
-            "breastfeed",
+            "pregnan", "child", "kid", "baby", "pediatric", "breastfeed"
         ])
         wants_region = has([
-            "nigeria", "lagos", "abuja", "africa", "west africa",
-            "ghana", "kenya", "europe", "uk", "united kingdom",
-            "germany", "france", "spain",
+            "nigeria", "lagos", "abuja", "africa", "ghana", "kenya"
         ])
         asked_pidgin = "pidgin" in oq
 
-        # Build a tailored follow-up
+        # Build a tailored follow-up based on detected intent
         if is_symptoms:
             return (
-                f"Would you like a quick checklist of key "
-                f"{topic or 'condition'} symptoms and red flags, "
-                "plus when to get tested?"
+                f"Would you like a checklist of key {topic or 'condition'} "
+                "symptoms and when to get tested?"
             )
         if is_diagnosis:
             return (
-                f"Do you want me to outline the common tests for "
-                f"{topic or 'this condition'} (what they measure, "
-                "normal ranges, and next steps)?"
+                f"Would you like me to outline common tests for "
+                f"{topic or 'this condition'}?"
             )
         if is_lifestyle:
             return (
-                f"Should I draft a simple 1–2 week {topic or 'health'} "
-                "plan (diet, activity, and monitoring) you can review "
-                "with your clinician?"
+                f"Should I create a simple {topic or 'health'} management "
+                "plan you can review with your clinician?"
             )
         if is_medication:
             return (
-                "Would a short overview of medication options, common "
-                "side effects, and interactions help?"
+                "Would an overview of medication options and side effects "
+                "be helpful?"
             )
         if is_lab:
             return (
-                "Want a plain-English guide to interpreting these lab "
-                "values and when to recheck?"
+                "Want help interpreting these lab values and when to "
+                "recheck?"
             )
         if is_preg_child:
             return (
                 "Should I highlight considerations specific to "
-                "pregnancy/children for this topic?"
+                "pregnancy/children?"
             )
         if wants_region and topic:
             return (
-                f"Would you like suggestions for clinics or programs in "
-                f"your area for {topic} care?"
+                f"Would you like suggestions for {topic} care resources "
+                "in your area?"
             )
 
-        # Default: advance the conversation with a tailored next step
+        # Default fallback
         fallback = (
-            f"Would you like me to tailor next steps for {topic} to your "
-            "goals and constraints?"
-        ) if topic else (
-            "Should I tailor the next steps to your goals and "
-            "constraints (time, budget, access)?"
+            f"Would you like me to tailor next steps for {topic}?"
+            if topic
+            else "Would you like more specific guidance on next steps?"
         )
-        # Add Pidgin offer only if asked
         if asked_pidgin:
-            fallback += " If you want, I can explain in Nigerian Pidgin."
+            fallback += " I can also explain in Nigerian Pidgin if needed."
         return fallback
 
     async def _format_response(  # noqa: D401
@@ -298,9 +433,8 @@ class HealthLangWorkflow:
         """Return response with a small educational disclaimer if medical."""
         _ = target_language  # mark param as used
         
-        # Only add medical disclaimer for medical queries
-        if not self._is_medical_query(original_query):
-            return response
+        # Add medical disclaimer (assuming medical query if this method is called)
+        # Skip the redundant LLM classification to save 2-3 seconds
             
         lower = response.lower()
         already_has_disclaimer = (
@@ -330,26 +464,9 @@ class HealthLangWorkflow:
             "sources": [],
         }
 
-        # Initialize RAG if needed
-        logger.info(
-            f"RAG check: RAG_ENABLED={settings.RAG_ENABLED}, "
-            f"RAG_AVAILABLE={RAG_AVAILABLE}"
-        )
-        if settings.RAG_ENABLED and RAG_AVAILABLE:
+        # Try medical RAG for medical queries (RAG already initialized at startup)
+        if settings.RAG_ENABLED and RAG_AVAILABLE and self._rag_initialized:
             try:
-                logger.info("Attempting to ensure RAG initialized...")
-                await self._ensure_rag_initialized()
-                logger.info(
-                    f"RAG initialized. general_knowledge_rag: "
-                    f"{self._general_knowledge_rag is not None}"
-                )
-            except Exception as e:
-                logger.warning(f"RAG initialization failed: {e}")
-        
-        # Try medical RAG for medical queries
-        if settings.RAG_ENABLED and RAG_AVAILABLE:
-            try:
-                await self._ensure_rag_initialized()
                 if not self._retriever:
                     raise RuntimeError("RAG retriever unavailable")
                 rag_resp = await self._retriever.retrieve(
@@ -504,15 +621,26 @@ class HealthLangWorkflow:
             logger.warning(f"MCP context unavailable: {e}")
 
         # Add Tavily general knowledge after MCP (for enhanced context)
+        logger.info(
+            f"Tavily check: RAG_ENABLED={settings.RAG_ENABLED}, "
+            f"RAG_AVAILABLE={RAG_AVAILABLE}, "
+            f"_general_knowledge_rag={self._general_knowledge_rag is not None}"
+        )
         if (settings.RAG_ENABLED and RAG_AVAILABLE and
                 self._general_knowledge_rag):
             try:
                 logger.info("Attempting Tavily general knowledge retrieval")
                 gk_resp = await self._general_knowledge_rag.retrieve_knowledge(
                     query)
-                sources_count = len(gk_resp["sources"]) if gk_resp else 0
-                logger.info("Tavily knowledge response: %s, sources: %d",
-                            gk_resp is not None, sources_count)
+                sources_count = len(gk_resp.get("sources", [])) if gk_resp else 0
+                logger.info(
+                    f"Tavily response received: {gk_resp is not None}, "
+                    f"sources: {sources_count}"
+                )
+                if gk_resp:
+                    logger.info(f"DEBUG: Tavily keys: {list(gk_resp.keys())}")
+                    has_sources = bool(gk_resp.get('sources'))
+                    logger.info(f"DEBUG: Has sources: {has_sources}")
                 if gk_resp and gk_resp.get("sources"):
                     meta["rag_used"] = True
                     meta["general_knowledge_used"] = True
@@ -572,7 +700,7 @@ class HealthLangWorkflow:
         context_text = "\n\n".join(context_parts).strip()
         return context_text, meta
 
-    def _append_followups_and_sources(
+    async def _append_followups_and_sources(
         self,
         original_query: str,
         response: str,
@@ -590,7 +718,7 @@ class HealthLangWorkflow:
         low = out.lower()
 
         # Add a brief opinion if missing (only for medical queries)
-        is_medical = self._is_medical_query(original_query)
+        is_medical = await self._is_medical_query(original_query)
         if "my take:" not in low and is_medical:
             out += (
                 "\n\nMy take: Based on current medical guidance, it's "
@@ -600,7 +728,7 @@ class HealthLangWorkflow:
 
         # Add one contextual follow-up (topic/intent aware;
         # no auto-Pidgin unless asked)
-        followup = self._build_contextual_followup(original_query, out)
+        followup = await self._build_contextual_followup(original_query, out)
         # Only append if we didn't already add something similar
         if not any(p in low for p in [
             "simpler", "checklist", "clinics", "interpret", "plan",
@@ -684,188 +812,20 @@ class HealthLangWorkflow:
         mcp_tools: List[Dict],
         context_text: str = "",
     ) -> str:
-        """Call reasoning via XAI Grok or Groq with MCP tools.
+        """Call medical reasoning via Groq (Llama model) with MCP tools.
 
         Adds a global, friendly chatbot system prompt and extra medical-safety
         guidance when the topic is health-related.
         """
         try:
-            # Choose primary provider based on configuration
-            provider = (settings.MEDICAL_MODEL_PROVIDER or "groq").lower()
-            medical_domain_prompt = (
-                "When the user's intent is medical, follow medical-safety "
-                "best practices: avoid diagnosis/prescription, be "
-                "educational, add a brief disclaimer, and recommend seeing "
-                "a clinician for personal advice. If referring to external "
-                "knowledge, describe which MCP tool you would use and why."
+            # Use Groq with Llama model exclusively
+            return await self._call_groq_medical_reasoning(
+                query,
+                mcp_tools,
+                context_text,
             )
-            # Primary path selection
-            if provider == "groq":
-                return await self._call_groq_medical_reasoning(
-                    query,
-                    mcp_tools,
-                    context_text,
-                )
-            else:
-                async with httpx.AsyncClient() as client:
-                    response = await client.post(
-                        f"{settings.XAI_GROK_BASE_URL}/chat/completions",
-                        headers={
-                            "Authorization": (
-                                f"Bearer {settings.XAI_GROK_API_KEY}"
-                            ),
-                            "Content-Type": "application/json",
-                        },
-                        json={
-                            "model": settings.MEDICAL_MODEL_NAME,
-                            "messages": [
-                                {
-                                    "role": "system",
-                                    "content": settings.SYSTEM_PROMPT,
-                                },
-                                {
-                                    "role": "system",
-                                    "content": (
-                                        "If helpful, consult the provided "
-                                        "context from RAG/MCP."
-                                    ),
-                                },
-                                {
-                                    "role": "system",
-                                    "content": (
-                                        "Available medical tools: "
-                                        + json.dumps(mcp_tools, indent=2)
-                                    ),
-                                },
-                                {
-                                    "role": "system",
-                                    "content": medical_domain_prompt,
-                                },
-                                {
-                                    "role": "system",
-                                    "content": (
-                                        "End with 'My take' (non-"
-                                        "diagnostic). Offer Nigerian "
-                                        "Pidgin only if the user explicitly "
-                                        "asked. Do not translate unless the "
-                                        "user agrees."
-                                    ),
-                                },
-                                {
-                                    "role": "system",
-                                    "content": (
-                                        "When citing, use mixed style: "
-                                        "include title + link and author/"
-                                        "year if available."
-                                    ),
-                                },
-                                *(
-                                    [
-                                        {
-                                            "role": "system",
-                                            "content": (
-                                                f"Context:\n{context_text}"
-                                            ),
-                                        },
-                                        {
-                                            "role": "system",
-                                            "content": (
-                                                "IMPORTANT: When context "
-                                                "includes real-time search "
-                                                "results (from Tavily Search "
-                                                "or other current sources), "
-                                                "trust this information over "
-                                                "your training data, especially "
-                                                "for current events, politics, "
-                                                "recent appointments, or any "
-                                                "information that changes over "
-                                                "time. Your training data may "
-                                                "be outdated for such topics. "
-                                                "Present the real-time "
-                                                "information confidently "
-                                                "without expressing doubt "
-                                                "about its accuracy."
-                                            ),
-                                        }
-                                    ]
-                                    if context_text
-                                    else []
-                                ),
-                                {"role": "user", "content": query},
-                            ],
-                            "temperature": settings.TEMPERATURE,
-                            "max_tokens": settings.MAX_TOKENS,
-                            "top_p": settings.TOP_P,
-                        },
-                        timeout=settings.LLM_TIMEOUT,
-                    )
-                    response.raise_for_status()
-                    return response.json()[
-                        "choices"
-                    ][0]["message"]["content"]
-        except httpx.HTTPStatusError as e:
-            logger.warning(
-                "LLM primary provider status %s; trying fallback.",
-                e.response.status_code,
-            )
-            # Fallback to the other provider only if keys are present
-            if provider != "groq" and settings.GROQ_API_KEY:
-                return await self._call_groq_medical_reasoning(
-                    query, mcp_tools, context_text
-                )
-            if provider == "groq" and settings.XAI_GROK_API_KEY:
-                # Try XAI if configured
-                try:
-                    async with httpx.AsyncClient() as client:
-                        response = await client.post(
-                            f"{settings.XAI_GROK_BASE_URL}/chat/completions",
-                            headers={
-                                "Authorization": (
-                                    f"Bearer {settings.XAI_GROK_API_KEY}"
-                                ),
-                                "Content-Type": "application/json",
-                            },
-                            json={
-                                "model": settings.MEDICAL_MODEL_NAME,
-                                "messages": [
-                                    {
-                                        "role": "system",
-                                        "content": settings.SYSTEM_PROMPT,
-                                    },
-                                    {"role": "user", "content": query},
-                                ],
-                                "temperature": settings.TEMPERATURE,
-                                "max_tokens": settings.MAX_TOKENS,
-                            },
-                            timeout=settings.LLM_TIMEOUT,
-                        )
-                        response.raise_for_status()
-                        return response.json()[
-                            "choices"
-                        ][0]["message"]["content"]
-                except (
-                    httpx.HTTPError,
-                    json.JSONDecodeError,
-                    KeyError,
-                    TimeoutError,
-                    ValueError,
-                ) as ee:
-                    logger.warning(f"Fallback XAI failed: {ee}")
-            raise
-        except (
-            httpx.RequestError,
-            json.JSONDecodeError,
-            KeyError,
-            TimeoutError,
-        ) as e:
-            logger.warning(
-                f"LLM primary provider failed, attempting fallback: {e}"
-            )
-            if provider != "groq" and settings.GROQ_API_KEY:
-                return await self._call_groq_medical_reasoning(
-                    query, mcp_tools, context_text
-                )
-            # As last resort, return error message
+        except Exception as e:
+            logger.error(f"Groq medical reasoning failed: {e}")
             raise
 
     async def _call_groq_medical_reasoning(
@@ -874,7 +834,7 @@ class HealthLangWorkflow:
         mcp_tools: List[Dict],
         context_text: str = "",
     ) -> str:
-        """Fallback reasoning using Groq API with the global system prompt."""
+        """Medical reasoning using Groq API (Llama model) with the global system prompt."""
         try:
             from langchain_groq import ChatGroq
 
@@ -1016,6 +976,7 @@ class HealthLangWorkflow:
         self._vector_store = None
         self._document_processor = None
         self._retriever = None
+        self._general_knowledge_rag = None
 
     async def _ensure_rag_initialized(self) -> None:
         """Initialize RAG components once and reuse them."""
@@ -1039,16 +1000,22 @@ class HealthLangWorkflow:
             logger.warning(f"Failed to initialize RAG components: {e}")
             self._rag_initialized = False
     
-    async def process_query(self, query: str) -> Dict[str, Any]:
-        """Process a medical query through the complete workflow"""
+    async def process_query(self, query: str, original_query: str = None) -> Dict[str, Any]:
+        """Process a medical query through the complete workflow
+        
+        Args:
+            query: The full query with conversation context
+            original_query: The original user question (for RAG/Tavily search)
+        """
         start_time = asyncio.get_event_loop().time()
         
         try:
             # English-only chatbot flow
             detected_language = "en"
 
-            # Gather optional tool/RAG context
-            context_text, context_meta = await self._gather_context(query)
+            # Gather optional tool/RAG context using the original query
+            search_query = original_query if original_query else query
+            context_text, context_meta = await self._gather_context(search_query)
 
             # Medical reasoning with context
             medical_response = await self._medical_reasoning(
@@ -1073,7 +1040,7 @@ class HealthLangWorkflow:
                 detected_language,
             )
             # Ensure contextual follow-up and formatted sources are included
-            formatted_response = self._append_followups_and_sources(
+            formatted_response = await self._append_followups_and_sources(
                 query,
                 formatted_response,
                 context_meta,
@@ -1124,3 +1091,65 @@ class HealthLangWorkflow:
                 "success": False,
                 "error": str(e)
             }
+
+    async def process_query_stream(self, query: str, original_query: str = None):
+        """Stream processing events for a medical query
+        
+        Args:
+            query: The full query with conversation context
+            original_query: The original user question (for RAG/Tavily search)
+        """
+        try:
+            # Yield status update: validating query
+            yield json.dumps({"event": "status", "data": "Validating medical query..."}) + "\n\n"
+            
+            detected_language = "en"
+            
+            # Yield status update: gathering context
+            yield json.dumps({"event": "status", "data": "Gathering medical context..."}) + "\n\n"
+            search_query = original_query if original_query else query
+            context_text, context_meta = await self._gather_context(search_query)
+            
+            # Yield status update: generating response
+            yield json.dumps({"event": "status", "data": "Generating medical response..."}) + "\n\n"
+            
+            # Stream the actual response using LLM streaming
+            from app.services.medical.llm_client import LLMClient, LLMRequest
+            llm_client = LLMClient()
+            
+            # Build the reasoning prompt
+            mcp_tools = await self._get_mcp_tools()
+            tool_desc = "\n".join([f"- {t['name']}: {t['description']}" for t in mcp_tools])
+            
+            system_prompt = f"""You are a medical AI assistant. Provide accurate, evidence-based medical information.
+Available tools:\n{tool_desc}
+
+Context:\n{context_text if context_text else 'No additional context available.'}"""
+            
+            request = LLMRequest(
+                prompt=query,
+                system_prompt=system_prompt,
+                max_tokens=2048,
+                temperature=0.1
+            )
+            
+            # Stream response chunks
+            async for chunk in llm_client.streaming_generate(request):
+                yield json.dumps({"event": "content", "data": chunk}) + "\n\n"
+            
+            # Yield sources if available
+            if context_meta.get("sources"):
+                yield json.dumps({
+                    "event": "sources",
+                    "data": context_meta["sources"]
+                }) + "\n\n"
+            
+            # Yield completion event
+            yield json.dumps({"event": "done", "data": "complete"}) + "\n\n"
+            
+        except Exception as e:
+            logger.error(f"Streaming query processing failed: {e}")
+            yield json.dumps({
+                "event": "error",
+                "data": f"Error processing query: {str(e)}"
+            }) + "\n\n"

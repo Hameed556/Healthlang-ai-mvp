@@ -134,9 +134,11 @@ class EmbeddingService:
             
             # Record metrics
             await record_embedding_generation(
-                model_name, 
-                len(request.texts), 
-                generation_time
+                request_id="embedding_" + str(hash(tuple(request.texts))),
+                model=model_name, 
+                text_length=len(request.texts), 
+                duration=generation_time,
+                success=True
             )
             
             logger.info(f"Generated embeddings for {len(request.texts)} texts in {generation_time:.2f}s")

@@ -37,6 +37,8 @@ scipy>=1.11.4
 redis>=5.0.1
 sqlalchemy>=2.0.23
 alembic>=1.13.1
+psycopg2-binary>=2.9.9  # PostgreSQL adapter
+asyncpg>=0.29.0  # Async PostgreSQL support
 
 # Security and authentication
 python-jose[cryptography]>=3.3.0
