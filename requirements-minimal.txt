@@ -32,6 +32,7 @@ scipy>=1.11.4
 # Database and caching
 redis>=5.0.1
 sqlalchemy>=2.0.23
+psycopg2-binary>=2.9.9
 
 # Security and authentication
 python-jose[cryptography]>=3.3.0
