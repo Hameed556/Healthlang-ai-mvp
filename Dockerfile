@@ -18,6 +18,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Copy requirements first for better caching
+# Updated: Added email-validator for Pydantic email validation
 COPY requirements.txt requirements-prod.txt requirements-minimal.txt pyproject.toml ./
 
 # Install Python dependencies (use minimal requirements to avoid conflicts)
