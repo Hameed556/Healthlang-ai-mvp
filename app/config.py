@@ -143,12 +143,16 @@ class Settings(BaseSettings):
         env="DATABASE_URL",
     )
     
-    @property
     def get_database_url(self) -> str:
         """
         Returns the appropriate database URL based on environment.
-        Priority: DATABASE_URL > PROD_DATABASE_URL (if production) > DEV_DATABASE_URL
+        Priority: Testing > DATABASE_URL > PROD_DATABASE_URL (if production) > DEV_DATABASE_URL
         """
+        # Check if in testing mode first
+        env = str(self.ENVIRONMENT)
+        if self.TESTING or env.lower() == "testing":
+            return self.TEST_DATABASE_URL
+        
         # If DATABASE_URL is explicitly set, use it (backward compatibility)
         if self.DATABASE_URL:
             return self.DATABASE_URL
@@ -403,12 +407,6 @@ class Settings(BaseSettings):
         """Check if running in testing mode"""
         env = str(self.ENVIRONMENT)
         return self.TESTING or env.lower() == "testing"
-    
-    def get_database_url(self) -> str:
-        """Get the appropriate database URL based on environment"""
-        if self.is_testing():
-            return self.TEST_DATABASE_URL
-        return self.DATABASE_URL
     
     def validate_settings(self) -> None:
         """Validate critical settings"""
