@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     PORT: int = Field(default=8000, env="PORT")
     WORKERS: int = Field(default=1, env="WORKERS")
     RELOAD: bool = Field(default=False, env="RELOAD")
+    BACKEND_URL: Optional[str] = Field(default=None, env="BACKEND_URL")
     
     # API Keys and External Services
     GROQ_API_KEY: str = Field(
