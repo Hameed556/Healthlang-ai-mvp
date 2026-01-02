@@ -16,7 +16,7 @@ from app.models.database_models import Base
 
 
 # Get the appropriate database URL based on environment
-database_url = settings.get_database_url()
+database_url = settings.get_database_url
 
 # Log which database is being used
 logger.info(f"Environment: {settings.ENVIRONMENT}")
