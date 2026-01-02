@@ -158,10 +158,11 @@ async def healthlang_exception_handler(
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Handle all other exceptions"""
+    request_id = getattr(request.state, "request_id", None)
     logger.error(
         f"Unhandled exception: {str(exc)}",
         exc_info=True,
-        extra={"request_id": request.state.request_id},
+        extra={"request_id": request_id},
     )
     # In development, expose the exception message to help debugging
     content = {
@@ -171,7 +172,7 @@ async def global_exception_handler(request: Request, exc: Exception):
             else "Internal server error"
         ),
         "error_code": "INTERNAL_ERROR",
-        "request_id": getattr(request.state, "request_id", None),
+        "request_id": request_id,
     }
     return JSONResponse(status_code=500, content=content)
 
